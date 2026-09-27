@@ -47,23 +47,37 @@ export async function POST(req: NextRequest) {
     const { error: ins } = await supabase.from("whatsapp_otps").insert({ phone: norm.national, otp, expires_at })
     if(ins) return NextResponse.json({ error:"DB whatsapp_otps: "+ins.message }, { status:500 })
 
-    // WhatsApp attempt (doesn't block)
-    if(process.env.WHATSAPP_PHONE_ID && process.env.WHATSAPP_TOKEN){
-      fetch(`https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_ID}/messages`,{
-        method:"POST",
-        headers:{ Authorization:`Bearer ${process.env.WHATSAPP_TOKEN}`, "Content-Type":"application/json" },
-        body: JSON.stringify({
-          messaging_product:"whatsapp", to: norm.waTo, type:"text",
-          text:{ body:`Team Ledger OTP: ${otp} - valid 10 mins for ${allowed.name} (${norm.country})` }
+    // WhatsApp send - awaited so failures are visible instead of silent
+    let whatsapp: { sent: boolean; error?: string } = { sent: false }
+    if (process.env.WHATSAPP_PHONE_ID && process.env.WHATSAPP_TOKEN) {
+      try {
+        const waRes = await fetch(`https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_ID}/messages`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messaging_product: "whatsapp", to: norm.waTo, type: "text",
+            text: { body: `Team Ledger OTP: ${otp} - valid 10 mins for ${allowed.name} (${norm.country})` }
+          }),
+          signal: AbortSignal.timeout(15000),
         })
-      }).catch(()=>{})
+        const waData = await waRes.json().catch(() => ({} as any))
+        if (!waRes.ok) {
+          whatsapp = { sent: false, error: waData?.error?.message || `WhatsApp API returned ${waRes.status}` }
+        } else {
+          whatsapp = { sent: true }
+        }
+      } catch (e: any) {
+        whatsapp = { sent: false, error: e?.message || "WhatsApp request failed" }
+      }
+    } else {
+      whatsapp = { sent: false, error: "WHATSAPP_PHONE_ID or WHATSAPP_TOKEN not set on the server" }
     }
 
     // Only expose the OTP in the response when explicitly enabled for local/dev testing.
     // Keep DEBUG_OTP unset (or "false") in production so the OTP is not leaked.
     const debugFields = process.env.DEBUG_OTP === "true" ? { debug_otp: otp } : {}
 
-    return NextResponse.json({ success:true, ...debugFields, sent_to: norm.waTo, country: norm.country, user: allowed })
+    return NextResponse.json({ success: true, ...debugFields, whatsapp, sent_to: norm.waTo, country: norm.country, user: allowed })
   }catch(e:any){
     return NextResponse.json({ error: e.message||"Server error" }, { status:500 })
   }
