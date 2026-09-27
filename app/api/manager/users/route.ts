@@ -1,29 +1,22 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY!
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
+const getSupabase = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL!
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   return createClient(url, key)
 }
 
 export async function GET() {
-  const supabase = getSupabase()
-  const { data } = await supabase.from("allowed_users").select("*").order("created_at")
-  return NextResponse.json({ users: data })
-}
-
-export async function POST(req: NextRequest) {
-  const supabase = getSupabase()
-  const { phone, name, role } = await req.json()
-  const clean = phone.replace("+","").replace(/\s/g,"")
-  await supabase.from("allowed_users").upsert({ phone: clean, name, role })
-  return NextResponse.json({ success: true })
-}
-
-export async function DELETE(req: NextRequest) {
-  const supabase = getSupabase()
-  const phone = req.nextUrl.searchParams.get("phone")
-  await supabase.from("allowed_users").delete().eq("phone", phone)
-  return NextResponse.json({ success: true })
+  try {
+    const supabase = getSupabase()
+    const { data, error } = await supabase.from("allowed_users").select("*").order("created_at", { ascending: false })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data || [])
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
 }
