@@ -11,6 +11,10 @@ const getSupabase = () => {
   return createClient(url, key)
 }
 
+function normalizeRole(input: any): string {
+  return String(input || "manager").trim().toLowerCase() === "admin" ? "admin" : "manager"
+}
+
 async function requireUser(req: Request): Promise<SessionUser | NextResponse> {
   const user = await getSessionUser(req.headers)
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -42,8 +46,9 @@ export async function POST(req: Request) {
     const body = await req.json()
     const name = String(body.name || "").trim()
     const phone = String(body.phone || "").replace(/\D/g, "")
-    // Only admins can grant the admin role - prevents privilege escalation
-    const role = isAdmin(user) ? String(body.role || "member").trim() : "member"
+    // Only admins can grant the admin role - prevents privilege escalation.
+    // Roles are normalized to admin/manager (legacy "member" becomes "manager").
+    const role = normalizeRole(isAdmin(user) ? body.role : "manager")
     if (!name || !phone) {
       return NextResponse.json({ error: "Name and phone are required" }, { status: 400 })
     }
@@ -75,8 +80,8 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Name and phone are required" }, { status: 400 })
     }
     const updates: Record<string, string> = { name, phone }
-    // Only admins can change roles
-    if (isAdmin(user) && body.role) updates.role = String(body.role).trim()
+    // Only admins can change roles (normalized to admin/manager)
+    if (isAdmin(user) && body.role) updates.role = normalizeRole(body.role)
     const supabase = getSupabase()
     let q = supabase.from("allowed_users").update(updates).eq("id", id)
     // Non-admins can only edit users they created

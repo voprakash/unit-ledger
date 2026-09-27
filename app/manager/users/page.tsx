@@ -3,15 +3,24 @@ import { useState, useEffect } from "react"
 
 type User = any
 
+// App roles are "manager" and "admin". Older rows may carry "member" - treat as manager.
+function displayRole(role: any): string {
+  const r = String(role || "manager").toLowerCase()
+  return r === "admin" ? "Admin" : "Manager"
+}
+function roleValue(role: any): string {
+  return String(role || "manager").toLowerCase() === "admin" ? "admin" : "manager"
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [search, setSearch] = useState("")
   const [showAdd, setShowAdd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [session, setSession] = useState<any>(null)
-  const [form, setForm] = useState({ name: "", phone: "", role: "member" })
+  const [form, setForm] = useState({ name: "", phone: "", role: "manager" })
   const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [editForm, setEditForm] = useState({ name: "", phone: "", role: "member" })
+  const [editForm, setEditForm] = useState<{ id: number | null; name: string; phone: string; role: string }>({ id: null, name: "", phone: "", role: "manager" })
   const [detailsUser, setDetailsUser] = useState<User | null>(null)
 
   useEffect(() => {
@@ -52,7 +61,7 @@ export default function UsersPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       setShowAdd(false)
-      setForm({ name: "", phone: "", role: "member" })
+      setForm({ name: "", phone: "", role: "manager" })
       loadUsers()
     } catch (e: any) {
       alert(e.message)
@@ -62,8 +71,12 @@ export default function UsersPage() {
   }
 
   const openEdit = (u: User) => {
+    if (!u || u.id === undefined || u.id === null) {
+      alert("Could not open editor: user id missing. Please refresh the page.")
+      return
+    }
     setEditingUser(u)
-    setEditForm({ name: u.name || "", phone: u.phone || "", role: u.role || "member" })
+    setEditForm({ id: u.id, name: u.name || "", phone: u.phone || "", role: roleValue(u.role) })
   }
 
   const handleEditUser = async () => {
@@ -71,12 +84,16 @@ export default function UsersPage() {
       alert("Name and Phone required")
       return
     }
+    if (editForm.id === undefined || editForm.id === null) {
+      alert("Could not save: user id missing. Please close and reopen the editor.")
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch("/api/manager/users", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: editingUser.id, ...editForm })
+        body: JSON.stringify(editForm)
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -104,7 +121,7 @@ export default function UsersPage() {
   const filtered = users.filter(u =>
     u.name?.toLowerCase().includes(search.toLowerCase()) ||
     u.phone?.includes(search) ||
-    u.role?.toLowerCase().includes(search.toLowerCase())
+    displayRole(u.role).toLowerCase().includes(search.toLowerCase())
   )
 
   const isAdminUI = session?.role === "admin"
@@ -142,7 +159,7 @@ export default function UsersPage() {
           {filtered.map((u) => (
             <div key={u.id} className="bg-white rounded-2xl p-4 border flex justify-between items-center">
               <div>
-                <p className="font-bold">{u.name} <span className={`ml-1 text-[11px] px-2 py-0.5 rounded-full ${u.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>{u.role || "member"}</span></p>
+                <p className="font-bold">{u.name} <span className={`ml-1 text-[11px] px-2 py-0.5 rounded-full ${displayRole(u.role) === "Admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>{displayRole(u.role)}</span></p>
                 <p className="text-[13px] text-gray-500">{u.phone}</p>
               </div>
               <div className="flex gap-2 shrink-0 ml-2">
@@ -175,7 +192,7 @@ export default function UsersPage() {
               <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value })} placeholder="Phone (10 digits)" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
               {isAdminUI && (
                 <select value={form.role} onChange={e => setForm({...form, role: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
-                  <option value="member">Member</option>
+                  <option value="manager">Manager</option>
                   <option value="admin">Admin</option>
                 </select>
               )}
@@ -207,7 +224,7 @@ export default function UsersPage() {
               <input value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value })} placeholder="Phone (10 digits)" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
               {isAdminUI && (
                 <select value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
-                  <option value="member">Member</option>
+                  <option value="manager">Manager</option>
                   <option value="admin">Admin</option>
                 </select>
               )}
@@ -238,7 +255,7 @@ export default function UsersPage() {
                 {[
                   ["NAME", detailsUser.name],
                   ["PHONE", detailsUser.phone],
-                  ["ROLE", detailsUser.role ? String(detailsUser.role).toUpperCase() : null],
+                  ["ROLE", displayRole(detailsUser.role)],
                   ["CREATED BY", detailsUser.created_by || "—"],
                   ["USER ID", detailsUser.id ? String(detailsUser.id) : null],
                   ["ADDED ON", detailsUser.created_at ? new Date(detailsUser.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : null],

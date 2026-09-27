@@ -10,7 +10,7 @@ create table if not exists allowed_users (
   id bigint generated always as identity primary key,
   name text,
   phone text,
-  role text not null default 'member',
+  role text not null default 'manager',
   created_by text,
   created_at timestamptz not null default now()
 );
