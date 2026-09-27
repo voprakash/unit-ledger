@@ -20,3 +20,12 @@ input, textarea, select {
   color: #9ca3af !important;
   opacity: 1 !important;
 }
+
+/* Hand/pointer cursor on everything clickable (Tailwind v4 resets buttons to arrow) */
+button, a, select, summary,
+[role="button"], [role="link"], [role="tab"] {
+  cursor: pointer;
+}
+button:disabled, [aria-disabled="true"] {
+  cursor: not-allowed;
+}

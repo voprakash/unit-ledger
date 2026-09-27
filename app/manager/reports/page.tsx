@@ -74,12 +74,18 @@ export default function ReportsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
+        signal: AbortSignal.timeout(30000),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Send failed")
+      const data = await res.json().catch(() => ({} as any))
+      if (!res.ok) throw new Error(data.error || `Server error (${res.status})`)
       alert(`Monthly report for ${data.month} sent to your WhatsApp ✓`)
     } catch (e: any) {
-      alert(e.message)
+      const msg = e?.name === "TimeoutError"
+        ? "Request timed out — the server took too long. Please try again."
+        : e?.message === "Failed to fetch"
+          ? "Couldn't reach the server. Check your internet connection and try again."
+          : (e?.message || "Send failed")
+      alert(msg)
     } finally {
       setSending(false)
     }
