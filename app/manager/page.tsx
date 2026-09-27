@@ -2,10 +2,22 @@
 import { useState, useEffect } from "react"
 import { createClient } from "@supabase/supabase-js"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+export const dynamic = 'force-dynamic'
+
+const getSupabase = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_KEY! ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE!
+
+  if (!url ||!key) {
+    console.error("Missing Supabase env vars");
+  }
+  return createClient(url, key as string)
+}
 
 export default function ManagerPage() {
   const [search, setSearch] = useState("")
@@ -13,7 +25,6 @@ export default function ManagerPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [showTrans, setShowTrans] = useState<any>(null)
 
-  // Form matches YOUR columns
   const [form, setForm] = useState({
     full_name: "", phone: "", id_number: "", address: "",
     office_name: "", office_address: "",
@@ -26,13 +37,13 @@ export default function ManagerPage() {
   useEffect(() => { fetchTenants() }, [])
 
   const fetchTenants = async () => {
-    const { data } = await supabase.from("tenants").select("*").order("created_at", { ascending: false })
+    const { data } = await getSupabase().from("tenants").select("*").order("created_at", { ascending: false })
     if(data) setTenants(data)
   }
 
   const addTenant = async () => {
     if(!form.full_name ||!form.phone) return alert("Name & Phone required")
-    const { error } = await supabase.from("tenants").insert([{
+    const { error } = await getSupabase().from("tenants").insert([{
       full_name: form.full_name,
       phone: form.phone.replace(/\s/g,""),
       id_number: form.id_number,
@@ -54,7 +65,7 @@ export default function ManagerPage() {
 
   const addTransaction = async () => {
     if(!transForm.amount) return alert("Amount required")
-    const { error } = await supabase.from("transactions").insert([{
+    const { error } = await getSupabase().from("transactions").insert([{
       tenant_id: showTrans.id,
       amount: Number(transForm.amount),
       type: transForm.type,
@@ -123,7 +134,7 @@ export default function ManagerPage() {
               <option value="vacated">Vacated</option>
               <option value="notice">On Notice</option>
             </select>
-            <p className="text-[12px] font-bold text-[#6b7280] mb-2 mt-2">OTHER DETAILS (from your schema)</p>
+            <p className="text-[12px] font-bold text-[#6b7280] mb-2 mt-2">OTHER DETAILS</p>
             <input value={form.id_number} onChange={e=>setForm({...form, id_number:e.target.value})} placeholder="ID Number" className="w-full px-5 py-4 rounded-2xl border bg-white text-[#111827] mb-3" />
             <input value={form.address} onChange={e=>setForm({...form, address:e.target.value})} placeholder="Address" className="w-full px-5 py-4 rounded-2xl border bg-white text-[#111827] mb-3" />
             <input value={form.office_name} onChange={e=>setForm({...form, office_name:e.target.value})} placeholder="Office Name" className="w-full px-5 py-4 rounded-2xl border bg-white text-[#111827] mb-3" />
