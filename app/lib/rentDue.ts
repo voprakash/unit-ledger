@@ -168,7 +168,7 @@ export function formatRentReminder(o: {
   const lines = [
     `🏠 *Rent Due Reminder — ${o.label}*`,
     ``,
-    `Hi ${o.managerName}, ${n} of your tenant${n === 1 ? "" : "s"} still owe${n === 1 ? "s" : ""} rent:`,
+    `Hi ${o.managerName}, ${n} tenant${n === 1 ? "" : "s"} still owe${n === 1 ? "s" : ""} rent for ${o.label}:`,
     ``,
   ]
   const shown = o.rows.slice(0, 15)
