@@ -144,12 +144,12 @@ export async function POST(req: NextRequest) {
           if (!tenant) {
             reply = `No tenant found for ${unit_code}`;
           } else if (!parts[2]) {
-            reply = `Use:\n${unit_code} delete last`;
+            reply = `Use:\n${unit_code} delete last\n${unit_code} delete 2  (2nd most recent)`;
           } else {
             const { data } = await scopeByOwner(supabase.from("transactions").select("*"))
               .eq("tenant_id", tenant.id).order("created_at", { ascending: false }).limit(10)
             const rows = activeOnly(data)
-            const softDelete = async (id: number) => {
+            const softDelete = async (id: string) => {
               const { error } = await supabase.from("transactions")
                 .update({ deleted_at: new Date().toISOString() }).eq("id", id)
               if (error) {
@@ -162,16 +162,24 @@ export async function POST(req: NextRequest) {
             if (parts[2].toLowerCase() === "last") {
               const target = rows[0]
               if (target) {
-                const err = await softDelete(Number(target.id))
+                const err = await softDelete(String(target.id))
                 reply = err || `🗑️ Moved to trash: ${unit_code} | ₹${target.amount} | ${normalizeType(target.type)} (restore from the app)`;
               } else reply = `Nothing to delete for ${unit_code}`;
             } else {
-              const id = parseInt(parts[2])
-              const target = id ? rows.find((x: any) => Number(x.id) === id) : null
+              // ids are uuids (untypable), so a number means "nth most recent";
+              // otherwise match the id string exactly.
+              const token = parts[2]
+              let target: any = null
+              if (/^\d+$/.test(token)) {
+                const n = parseInt(token, 10)
+                target = n >= 1 && n <= rows.length ? rows[n - 1] : null
+              } else {
+                target = rows.find((x: any) => String(x.id) === token) || null
+              }
               if (target) {
-                const err = await softDelete(Number(target.id))
-                reply = err || `🗑️ Moved to trash: #${id} (restore from the app)`;
-              } else reply = `No matching entry #${parts[2]} for ${unit_code}`;
+                const err = await softDelete(String(target.id))
+                reply = err || `🗑️ Moved to trash: ${unit_code} | ₹${target.amount} | ${normalizeType(target.type)} (restore from the app)`;
+              } else reply = `No matching entry for "${token}". Use:\n${unit_code} delete last`;
             }
           }
         } else if (parts[1]?.toLowerCase() === "report" || parts[0]?.toLowerCase() === "report") {
