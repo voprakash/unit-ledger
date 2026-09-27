@@ -99,8 +99,8 @@ export default function ManagerPage() {
           {tenants.map((t) => (
             <div key={t.id} className="bg-white rounded-2xl p-4 border flex justify-between">
               <div>
-                <p className="font-bold">{t.name}</p>
-                <p className="text-[13px] text-gray-500">{t.property} • ₹{t.rent} • {t.status}</p>
+                <p className="font-bold">{t.full_name}</p>
+                <p className="text-[13px] text-gray-500">{t.room_number} • ₹{t.rent_amount} • {t.status}</p>
               </div>
               <p className="text-[13px]">{t.phone}</p>
             </div>

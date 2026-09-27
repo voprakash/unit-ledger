@@ -41,15 +41,15 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabase()
 
     const { data, error } = await supabase.from("tenants").insert({
-      name: body.name,
+      full_name: body.name,
       phone: body.phone,
-      property: body.property || null,
-      rent: body.rent ? Number(body.rent) : null,
+      room_number: body.property || null,
+      rent_amount: body.rent ? Number(body.rent) : null,
       deposit: body.deposit ? Number(body.deposit) : null,
       start_date: body.start_date || null,
       status: body.status || "active",
-      aadhaar: body.aadhaar || null,
-      notes: body.notes || null,
+      id_number: body.aadhaar || null,
+      address: body.notes || null,
       created_by: body.created_by || getSessionPhone(req.headers),
     }).select().single()
 
