@@ -39,14 +39,22 @@ export async function computeMonthlySummary(db: Db, year: number, month: number)
 
   const { data: tenants } = await db.from("tenants").select("id,full_name,room_number").limit(1000)
   // Pad the range by a day on each side, then filter precisely in JS (same as the Reports page)
-  const { data: txns } = await db
+  const txnQuery = (cols: string) => db
     .from("transactions")
-    .select("tenant_id,tenant_name,type,amount,date,created_at")
+    .select(cols)
     .gte("date", `${year}-${mm}-00`)
     .lte("date", `${year}-${mm}-32`)
     .limit(5000)
 
-  const inMonth = (txns || []).filter((x: any) => {
+  let txnRes = await txnQuery("tenant_id,tenant_name,type,amount,date,created_at,deleted_at")
+  if (txnRes.error && /deleted_at/i.test(String(txnRes.error.message || ""))) {
+    // Migration not run yet — fall back to the old column set
+    txnRes = await txnQuery("tenant_id,tenant_name,type,amount,date,created_at")
+  }
+  const txns = txnRes.data || []
+
+  const inMonth = txns.filter((x: any) => {
+    if (x.deleted_at) return false // skip soft-deleted
     const d = String(x.date || x.created_at || "").slice(0, 10)
     return d >= start && d <= end
   })

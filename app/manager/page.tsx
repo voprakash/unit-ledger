@@ -12,6 +12,12 @@ export default function ManagerPage() {
   const [showTrans, setShowTrans] = useState<any>(null)
   const [editingTenant, setEditingTenant] = useState<any>(null)
   const [detailsTenant, setDetailsTenant] = useState<any>(null)
+  const [txns, setTxns] = useState<any[]>([])
+  const [editingTxn, setEditingTxn] = useState<any>(null)
+  const [txnEditForm, setTxnEditForm] = useState({ amount: "", type: "rent", method: "cash", description: "", date: "" })
+  const [showTrash, setShowTrash] = useState(false)
+  const [trashTxns, setTrashTxns] = useState<any[]>([])
+  const [meAdmin, setMeAdmin] = useState(false)
   const [editForm, setEditForm] = useState({
     name: "", phone: "", property: "", rent: "", deposit: "",
     aadhaar: "", start_date: "", notes: "",
@@ -44,7 +50,38 @@ export default function ManagerPage() {
     if (s) setSession(JSON.parse(s))
     else window.location.href = "/"
     loadTenants()
+    loadTxns()
+    fetch("/api/auth/me").then(r => r.json()).then(me => {
+      if (me && String(me.role || "").toLowerCase() === "admin") setMeAdmin(true)
+    }).catch(() => {})
   }, [])
+
+  const loadTxns = async () => {
+    try {
+      const res = await fetch("/api/transactions")
+      const data = await res.json()
+      setTxns(Array.isArray(data) ? data : [])
+    } catch { setTxns([]) }
+  }
+
+  const loadTrash = async () => {
+    try {
+      const res = await fetch("/api/transactions?filter=deleted")
+      const data = await res.json()
+      setTrashTxns(Array.isArray(data) ? data : [])
+    } catch { setTrashTxns([]) }
+  }
+
+  const tenantTxns = (tenantId: any) =>
+    txns
+      .filter((x: any) => String(x.tenant_id) === String(tenantId))
+      .sort((a: any, b: any) => String(b.date || b.created_at || "").localeCompare(String(a.date || a.created_at || "")))
+
+  const canModifyTxn = (x: any) => meAdmin || String(x.created_by) === String(session?.phone)
+  const canModifyTenant = (t: any) => meAdmin || String(t.created_by) === String(session?.phone)
+  const isEditedTxn = (x: any) =>
+    x.updated_at && x.created_at &&
+    (new Date(x.updated_at).getTime() - new Date(x.created_at).getTime() > 60000)
 
   const loadTenants = async () => {
     const res = await fetch("/api/tenants")
@@ -83,12 +120,93 @@ export default function ManagerPage() {
       if (!res.ok) throw new Error(data.error)
       setShowTrans(null)
       setTransForm({ amount: "", type: "rent", method: "cash", description: "", date: new Date().toISOString().split("T")[0] })
+      await loadTxns()
       alert("Transaction Added!")
     } catch (e: any) {
       alert(e.message)
     } finally {
       setLoading(false)
     }
+  }
+
+  const openEditTxn = (x: any) => {
+    setEditingTxn(x)
+    setTxnEditForm({
+      amount: String(x.amount ?? ""),
+      type: x.type || "rent",
+      method: x.method || "cash",
+      description: x.notes || "",
+      date: String(x.date || x.created_at || "").slice(0, 10),
+    })
+  }
+
+  const handleEditTxn = async () => {
+    if (!txnEditForm.amount) { alert("Amount required"); return }
+    setLoading(true)
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingTxn.id,
+          amount: Number(txnEditForm.amount),
+          type: txnEditForm.type,
+          method: txnEditForm.method,
+          notes: txnEditForm.description,
+          date: txnEditForm.date,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Update failed")
+      setEditingTxn(null)
+      await loadTxns()
+    } catch (e: any) { alert(e.message) } finally { setLoading(false) }
+  }
+
+  const handleDeleteTxn = async (x: any, permanent = false) => {
+    if (!confirm(permanent
+      ? "Delete this transaction FOREVER? This cannot be undone."
+      : "Delete this transaction? You can restore it from trash.")) return
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: x.id, permanent }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Delete failed")
+      await loadTxns()
+      if (showTrash) await loadTrash()
+    } catch (e: any) { alert(e.message) }
+  }
+
+  const handleRestoreTxn = async (x: any) => {
+    try {
+      const res = await fetch("/api/transactions/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: x.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Restore failed")
+      await loadTxns()
+      await loadTrash()
+    } catch (e: any) { alert(e.message) }
+  }
+
+  const handleDeleteTenant = async (t: Tenant) => {
+    if (!confirm(`Delete tenant ${t.full_name} permanently?`)) return
+    try {
+      const res = await fetch("/api/tenants", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: t.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Delete failed")
+      if (detailsTenant?.id === t.id) setDetailsTenant(null)
+      await loadTenants()
+    } catch (e: any) { alert(e.message) }
   }
 
   const openEditTenant = (t: Tenant) => {
@@ -229,6 +347,9 @@ export default function ManagerPage() {
                   <button onClick={() => setShowTrans(t)} className="px-3 py-1.5 rounded-xl bg-black text-white font-bold text-[12px]">+ Trans</button>
                   <button onClick={() => openEditTenant(t)} className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-800 font-bold text-[12px]">Edit</button>
                   <button onClick={() => setDetailsTenant(t)} className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-600 font-bold text-[12px]">Details</button>
+                  {canModifyTenant(t) && (
+                    <button onClick={() => handleDeleteTenant(t)} className="px-3 py-1.5 rounded-xl bg-red-50 text-red-600 font-bold text-[12px]">Delete</button>
+                  )}
                 </div>
               </div>
             </div>
@@ -344,6 +465,50 @@ export default function ManagerPage() {
         </div>
       )}
 
+      {/* ===== EDIT TRANSACTION MODAL ===== */}
+      {editingTxn && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center">
+          <div className="bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[32px] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden mt-12 sm:mt-0">
+            <div className="shrink-0 bg-white rounded-t-[32px] px-6 pt-4 pb-3 border-b border-gray-100">
+              <div className="w-10 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden"></div>
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-[20px] font-bold text-gray-900">Edit Transaction</h2>
+                  <p className="text-[13px] text-gray-500">{editingTxn.tenant_name || ""}</p>
+                </div>
+                <button onClick={() => setEditingTxn(null)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-[14px]">✕</button>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3 overscroll-contain">
+              <input value={txnEditForm.amount} onChange={e => setTxnEditForm({...txnEditForm, amount: e.target.value })} placeholder="Amount ₹" type="number" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+              <select value={txnEditForm.type} onChange={e => setTxnEditForm({...txnEditForm, type: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
+                <option value="rent">Rent</option>
+                <option value="deposit">Deposit</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="electricity">Electricity</option>
+                <option value="water">Water</option>
+                <option value="gas">Gas</option>
+                <option value="other">Other</option>
+              </select>
+              <select value={txnEditForm.method} onChange={e => setTxnEditForm({...txnEditForm, method: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="bank">Bank Transfer</option>
+                <option value="other">Other</option>
+              </select>
+              <input type="date" value={txnEditForm.date} onChange={e => setTxnEditForm({...txnEditForm, date: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+              <input value={txnEditForm.description} onChange={e => setTxnEditForm({...txnEditForm, description: e.target.value })} placeholder="Description / notes" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+            </div>
+
+            <div className="shrink-0 bg-white px-5 py-4 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 flex gap-3">
+              <button onClick={() => setEditingTxn(null)} className="flex-1 py-4 rounded-2xl bg-gray-100 font-bold text-[16px] text-gray-900">Cancel</button>
+              <button onClick={handleEditTxn} disabled={loading} className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-[16px] disabled:opacity-50">{loading ? "Saving..." : "Save Changes"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ===== EDIT TENANT MODAL ===== */}
       {editingTenant && (
         <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center">
@@ -409,7 +574,7 @@ export default function ManagerPage() {
               <div className="w-10 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden"></div>
               <div className="flex justify-between items-center">
                 <h2 className="text-[20px] font-bold text-gray-900">Tenant Details</h2>
-                <button onClick={() => setDetailsTenant(null)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-[14px]">✕</button>
+                <button onClick={() => { setDetailsTenant(null); setShowTrash(false) }} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-[14px]">✕</button>
               </div>
             </div>
 
@@ -434,11 +599,69 @@ export default function ManagerPage() {
                   </div>
                 ) : null)}
               </div>
+
+              {/* ===== TRANSACTIONS (edit / delete / trash) ===== */}
+              <div className="mt-4">
+                <p className="text-[11px] font-bold tracking-widest text-gray-400 mb-2 ml-1">TRANSACTIONS</p>
+                {tenantTxns(detailsTenant.id).length === 0 && (
+                  <p className="text-[13px] text-gray-400 ml-1">No transactions yet.</p>
+                )}
+                {tenantTxns(detailsTenant.id).map((x: any) => (
+                  <div key={x.id} className="bg-white border border-gray-100 rounded-2xl p-3 mb-2">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0">
+                        <p className="font-bold text-[15px]">₹{Number(x.amount).toLocaleString("en-IN")}
+                          <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold capitalize">{x.type || "other"}</span>
+                          {isEditedTxn(x) && <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">edited</span>}
+                        </p>
+                        <p className="text-[12px] text-gray-500">{String(x.date || x.created_at || "").slice(0, 10)}{x.method ? ` • ${x.method}` : ""}</p>
+                        {x.notes && <p className="text-[12px] text-gray-500 truncate">{x.notes}</p>}
+                      </div>
+                      {canModifyTxn(x) && (
+                        <div className="flex gap-1.5 shrink-0">
+                          <button onClick={() => openEditTxn(x)} className="px-2.5 py-1.5 rounded-xl bg-gray-100 text-gray-800 font-bold text-[11px]">Edit</button>
+                          <button onClick={() => handleDeleteTxn(x)} className="px-2.5 py-1.5 rounded-xl bg-red-50 text-red-600 font-bold text-[11px]">Delete</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                <button
+                  onClick={() => { const v = !showTrash; setShowTrash(v); if (v) loadTrash() }}
+                  className="w-full mt-1 py-2.5 rounded-2xl bg-gray-50 text-gray-600 font-bold text-[13px]"
+                >
+                  🗑️ Recently deleted
+                </button>
+                {showTrash && (
+                  <div className="mt-2">
+                    {trashTxns.filter((x: any) => String(x.tenant_id) === String(detailsTenant.id)).map((x: any) => (
+                      <div key={x.id} className="bg-gray-50 border border-gray-100 rounded-2xl p-3 mb-2">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0">
+                            <p className="font-bold text-[15px] text-gray-500 line-through">₹{Number(x.amount).toLocaleString("en-IN")}</p>
+                            <p className="text-[12px] text-gray-400">{String(x.date || x.created_at || "").slice(0, 10)} • {x.type || "other"}</p>
+                          </div>
+                          {canModifyTxn(x) && (
+                            <div className="flex gap-1.5 shrink-0">
+                              <button onClick={() => handleRestoreTxn(x)} className="px-2.5 py-1.5 rounded-xl bg-green-100 text-green-700 font-bold text-[11px]">Restore</button>
+                              <button onClick={() => handleDeleteTxn(x, true)} className="px-2.5 py-1.5 rounded-xl bg-red-100 text-red-700 font-bold text-[11px]">Delete forever</button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {trashTxns.filter((x: any) => String(x.tenant_id) === String(detailsTenant.id)).length === 0 && (
+                      <p className="text-[12px] text-gray-400 text-center py-2">Trash is empty.</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="shrink-0 bg-white px-5 py-4 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 flex gap-3">
-              <button onClick={() => { setDetailsTenant(null); openEditTenant(detailsTenant) }} className="flex-1 py-4 rounded-2xl bg-gray-100 font-bold text-[16px] text-gray-900">Edit</button>
-              <button onClick={() => setDetailsTenant(null)} className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-[16px]">Close</button>
+              <button onClick={() => { setDetailsTenant(null); setShowTrash(false); openEditTenant(detailsTenant) }} className="flex-1 py-4 rounded-2xl bg-gray-100 font-bold text-[16px] text-gray-900">Edit</button>
+              <button onClick={() => { setDetailsTenant(null); setShowTrash(false) }} className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-[16px]">Close</button>
             </div>
           </div>
         </div>

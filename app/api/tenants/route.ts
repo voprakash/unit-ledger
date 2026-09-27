@@ -104,3 +104,39 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  const auth = await requireUser(req)
+  if (auth instanceof NextResponse) return auth
+  const user = auth
+  try {
+    const body = await req.json().catch(() => ({}))
+    if (!body.id) return NextResponse.json({ error: "Tenant id is required" }, { status: 400 })
+    const supabase = getSupabase()
+
+    // Ownership check
+    let fq = supabase.from("tenants").select("id").eq("id", body.id)
+    if (!isAdmin(user)) fq = fq.eq("created_by", user.phone)
+    const { data: existing, error: fetchError } = await fq.maybeSingle()
+    if (fetchError) return NextResponse.json({ error: "Server error" }, { status: 500 })
+    if (!existing) return NextResponse.json({ error: "Tenant not found" }, { status: 404 })
+
+    // Guard: refuse while active transactions reference this tenant
+    const { data: txns } = await supabase.from("transactions").select("id,deleted_at").eq("tenant_id", body.id)
+    const activeCount = (txns || []).filter((t: any) => !t.deleted_at).length
+    if (activeCount > 0) {
+      return NextResponse.json(
+        { error: `This tenant has ${activeCount} transaction${activeCount === 1 ? "" : "s"}. Delete or move them first.` },
+        { status: 409 }
+      )
+    }
+
+    let q = supabase.from("tenants").delete().eq("id", body.id)
+    if (!isAdmin(user)) q = q.eq("created_by", user.phone)
+    const { error } = await q
+    if (error) return NextResponse.json({ error: "Server error" }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  } catch (e: any) {
+    return NextResponse.json({ error: "Server error" }, { status: 500 })
+  }
+}
