@@ -49,6 +49,10 @@ export async function GET(req: Request) {
       prune,
     })
   } catch (e: any) {
-    return NextResponse.json({ error: "Drive backup failed" }, { status: 500 })
+    // Detail is safe to expose: this endpoint requires CRON_SECRET bearer auth.
+    return NextResponse.json(
+      { error: "Drive backup failed", detail: String(e?.message || e) },
+      { status: 500 }
+    )
   }
 }
