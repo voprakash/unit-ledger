@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js'
+import { createHmac, timingSafeEqual } from "crypto"
 
 function getSupabase() {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -33,6 +34,27 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Verify Meta's webhook signature BEFORE doing anything else.
+  // Without this, anyone can forge payloads and impersonate team members.
+  const appSecret = process.env.WHATSAPP_APP_SECRET
+  if (!appSecret) {
+    return NextResponse.json({ ok: false, error: "WHATSAPP_APP_SECRET is not configured" }, { status: 500 })
+  }
+  const rawBody = await req.text()
+  const sigHeader = req.headers.get("x-hub-signature-256") || ""
+  const expected = "sha256=" + createHmac("sha256", appSecret).update(rawBody, "utf8").digest("hex")
+  let valid = false
+  if (sigHeader.length === expected.length) {
+    try {
+      valid = timingSafeEqual(Buffer.from(sigHeader), Buffer.from(expected))
+    } catch {
+      valid = false
+    }
+  }
+  if (!valid) {
+    return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 })
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let supabase: any
   try {
@@ -40,7 +62,12 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 })
   }
-  const body = await req.json();
+  let body: any = {}
+  try {
+    body = JSON.parse(rawBody)
+  } catch {
+    return NextResponse.json({ ok: true })
+  }
   const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
   if (!message) return NextResponse.json({ ok: true });
   const from = message.from;

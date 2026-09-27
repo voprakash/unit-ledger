@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { createSessionToken, sessionCookieHeader } from "@/app/lib/session"
+import { checkRateLimit } from "@/app/lib/rateLimit"
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -29,6 +30,13 @@ export async function POST(req: NextRequest) {
     const { phone, otp } = await req.json()
     const norm = normalizePhone(phone||"")
     const supabase = getSupabase()
+
+    // Max 5 guesses per phone per 10 minutes; burn the code when exceeded
+    const rl = await checkRateLimit(supabase, `otp-verify:phone:${norm.national}`, 5, 10*60*1000)
+    if(!rl.allowed){
+      await supabase.from("whatsapp_otps").delete().eq("phone", norm.national)
+      return NextResponse.json({ error:"Too many attempts. Request a new OTP." }, { status:429 })
+    }
 
     const { data: row, error } = await supabase.from("whatsapp_otps")
       .select("*").eq("phone", norm.national).eq("otp", otp)

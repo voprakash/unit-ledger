@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { checkRateLimit } from "@/app/lib/rateLimit"
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -36,6 +37,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(()=>({}))
     const norm = normalizePhone(body.phone||"")
     if(!norm.isValid) return NextResponse.json({ error:"Enter 10-digit US or India phone" }, { status:400 })
+
+    // Rate limits: 20 sends/IP/hour (slows enumeration), 3 sends/phone/hour (stops OTP bombing)
+    const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown"
+    const ipOk = await checkRateLimit(supabase, `otp-send:ip:${ip}`, 20, 60*60*1000)
+    if(!ipOk.allowed) return NextResponse.json({ error:"Too many requests. Try again later." }, { status:429 })
+    const phoneOk = await checkRateLimit(supabase, `otp-send:phone:${norm.national}`, 3, 60*60*1000)
+    if(!phoneOk.allowed) return NextResponse.json({ error:"Too many OTP requests for this number. Try again in an hour." }, { status:429 })
 
     const { data: allowed, error } = await supabase.from("allowed_users").select("*").ilike("phone", `%${norm.national}%`).limit(1).maybeSingle()
     if(error) return NextResponse.json({ error:"DB allowed_users: "+error.message }, { status:500 })
