@@ -1,5 +1,6 @@
 "use client"
 import { useState, useEffect, useMemo } from "react"
+import RentDueTab from "./RentDueTab"
 
 type Tenant = any
 type Txn = any
@@ -35,6 +36,7 @@ export default function ReportsPage() {
   const [toDate, setToDate] = useState(() => isoDay(new Date()))
   const [isAdminUI, setIsAdminUI] = useState(false)
   const [sending, setSending] = useState(false)
+  const [tab, setTab] = useState<"txns" | "rentdue">("txns")
 
   const resetDates = () => {
     const [f, t] = monthRange(0)
@@ -151,6 +153,24 @@ export default function ReportsPage() {
       </div>
 
       <div className="max-w-md mx-auto p-4">
+        {/* Report type tabs */}
+        <div className="flex gap-2 mb-4 print:hidden">
+          <button
+            onClick={() => setTab("txns")}
+            className={`flex-1 py-3 rounded-2xl text-[15px] font-bold ${tab === "txns" ? "bg-black text-white" : "bg-white border text-gray-700"}`}
+          >
+            🧾 Transactions
+          </button>
+          <button
+            onClick={() => setTab("rentdue")}
+            className={`flex-1 py-3 rounded-2xl text-[15px] font-bold ${tab === "rentdue" ? "bg-black text-white" : "bg-white border text-gray-700"}`}
+          >
+            🏠 Rent Due
+          </button>
+        </div>
+
+        {tab === "rentdue" ? <RentDueTab /> : (
+        <>
         {/* Filters */}
         <div className="bg-white rounded-[20px] p-4 border mb-4 space-y-3 print:hidden">
           <div>
@@ -288,6 +308,8 @@ export default function ReportsPage() {
             )}
             {!isAdminUI && <div className="mb-8" />}
           </>
+        )}
+        </>
         )}
       </div>
     </div>
