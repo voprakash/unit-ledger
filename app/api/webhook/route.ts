@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     const lower = text.toLowerCase().trim();
 
     // EXPENSE TYPES - these will SUBTRACT in total
-    const expenseTypes = ["expense", "other", "water", "electricity", "maintenance", "repair", "bill"];
+    const expenseTypes = ["expense", "other", "water", "gas", "electricity", "maintenance", "repair", "bill"];
     // INCOME TYPES - these will ADD
     const incomeTypes = ["rent", "deposit", "sale", "payment", "advance"];
 

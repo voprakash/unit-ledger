@@ -322,6 +322,8 @@ export default function ManagerPage() {
                 <option value="deposit">Deposit</option>
                 <option value="maintenance">Maintenance</option>
                 <option value="electricity">Electricity</option>
+                <option value="water">Water</option>
+                <option value="gas">Gas</option>
                 <option value="other">Other</option>
               </select>
               <select value={transForm.method} onChange={e => setTransForm({...transForm, method: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">

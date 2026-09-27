@@ -139,6 +139,8 @@ export default function ReportsPage() {
               <option value="deposit">Deposit</option>
               <option value="maintenance">Maintenance</option>
               <option value="electricity">Electricity</option>
+              <option value="water">Water</option>
+              <option value="gas">Gas</option>
               <option value="other">Other</option>
             </select>
           </div>
