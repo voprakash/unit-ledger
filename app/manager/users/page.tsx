@@ -20,7 +20,7 @@ export default function UsersPage() {
   const [session, setSession] = useState<any>(null)
   const [form, setForm] = useState({ name: "", phone: "", role: "manager" })
   const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [editForm, setEditForm] = useState<{ id: number | null; name: string; phone: string; role: string }>({ id: null, name: "", phone: "", role: "manager" })
+  const [editForm, setEditForm] = useState<{ id: number | null; originalPhone: string; name: string; phone: string; role: string }>({ id: null, originalPhone: "", name: "", phone: "", role: "manager" })
   const [detailsUser, setDetailsUser] = useState<User | null>(null)
 
   useEffect(() => {
@@ -71,12 +71,13 @@ export default function UsersPage() {
   }
 
   const openEdit = (u: User) => {
-    if (!u || u.id === undefined || u.id === null) {
-      alert("Could not open editor: user id missing. Please refresh the page.")
+    // Identify the user by id when available, otherwise by phone (unique per login)
+    if (!u || ((u.id === undefined || u.id === null) && !u.phone)) {
+      alert("Could not open editor: user not identified. Please refresh the page.")
       return
     }
     setEditingUser(u)
-    setEditForm({ id: u.id, name: u.name || "", phone: u.phone || "", role: roleValue(u.role) })
+    setEditForm({ id: u.id ?? null, originalPhone: u.phone || "", name: u.name || "", phone: u.phone || "", role: roleValue(u.role) })
   }
 
   const handleEditUser = async () => {
@@ -85,8 +86,10 @@ export default function UsersPage() {
       return
     }
     if (editForm.id === undefined || editForm.id === null) {
-      alert("Could not save: user id missing. Please close and reopen the editor.")
-      return
+      if (!editForm.originalPhone) {
+        alert("Could not save: user not identified. Please close and reopen the editor.")
+        return
+      }
     }
     setLoading(true)
     try {
@@ -108,8 +111,9 @@ export default function UsersPage() {
 
   const handleDeleteUser = async (u: User) => {
     if (!confirm(`Remove ${u.name} (${u.phone})? They will no longer be able to log in or use the WhatsApp bot.`)) return
+    const key = (u.id !== undefined && u.id !== null) ? `id=${u.id}` : `phone=${encodeURIComponent(u.phone || "")}`
     try {
-      const res = await fetch(`/api/manager/users?id=${u.id}`, { method: "DELETE" })
+      const res = await fetch(`/api/manager/users?${key}`, { method: "DELETE" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       loadUsers()
@@ -157,7 +161,7 @@ export default function UsersPage() {
 
         <div className="space-y-3">
           {filtered.map((u) => (
-            <div key={u.id} className="bg-white rounded-2xl p-4 border flex justify-between items-center">
+            <div key={u.id ?? u.phone} className="bg-white rounded-2xl p-4 border flex justify-between items-center">
               <div>
                 <p className="font-bold">{u.name} <span className={`ml-1 text-[11px] px-2 py-0.5 rounded-full ${displayRole(u.role) === "Admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>{displayRole(u.role)}</span></p>
                 <p className="text-[13px] text-gray-500">{u.phone}</p>

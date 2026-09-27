@@ -72,8 +72,12 @@ export async function PUT(req: Request) {
   const user = auth
   try {
     const body = await req.json()
-    const id = body.id
-    if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
+    // Identify the row by id when present, otherwise by exact phone (unique per OTP login)
+    const id = body.id ?? null
+    const keyPhone = String(body.originalPhone || "").trim()
+    if ((id === undefined || id === null) && !keyPhone) {
+      return NextResponse.json({ error: "id or phone is required" }, { status: 400 })
+    }
     const name = String(body.name || "").trim()
     const phone = String(body.phone || "").replace(/\D/g, "")
     if (!name || !phone) {
@@ -83,7 +87,9 @@ export async function PUT(req: Request) {
     // Only admins can change roles (normalized to admin/manager)
     if (isAdmin(user) && body.role) updates.role = normalizeRole(body.role)
     const supabase = getSupabase()
-    let q = supabase.from("allowed_users").update(updates).eq("id", id)
+    let q = supabase.from("allowed_users").update(updates)
+    if (id !== undefined && id !== null) q = q.eq("id", id)
+    else q = q.eq("phone", keyPhone)
     // Non-admins can only edit users they created
     if (!isAdmin(user)) q = q.eq("created_by", user.phone)
     const { data, error } = await q.select().single()
@@ -101,9 +107,12 @@ export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
     const id = searchParams.get("id")
-    if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
+    const phone = searchParams.get("phone")
+    if (!id && !phone) return NextResponse.json({ error: "id or phone is required" }, { status: 400 })
     const supabase = getSupabase()
-    let q = supabase.from("allowed_users").delete().eq("id", id)
+    let q = supabase.from("allowed_users").delete()
+    if (id) q = q.eq("id", id)
+    else q = q.eq("phone", phone)
     // Non-admins can only remove users they created
     if (!isAdmin(user)) q = q.eq("created_by", user.phone)
     const { error } = await q
