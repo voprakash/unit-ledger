@@ -10,6 +10,13 @@ export default function ManagerPage() {
   const [session, setSession] = useState<any>(null)
   const [search, setSearch] = useState("")
   const [showTrans, setShowTrans] = useState<any>(null)
+  const [editingTenant, setEditingTenant] = useState<any>(null)
+  const [detailsTenant, setDetailsTenant] = useState<any>(null)
+  const [editForm, setEditForm] = useState({
+    name: "", phone: "", property: "", rent: "", deposit: "",
+    aadhaar: "", start_date: "", notes: "",
+    office_name: "", office_address: "", status: "active"
+  })
   const [transForm, setTransForm] = useState({
     amount: "",
     type: "rent",
@@ -77,6 +84,59 @@ export default function ManagerPage() {
       setShowTrans(null)
       setTransForm({ amount: "", type: "rent", method: "cash", description: "", date: new Date().toISOString().split("T")[0] })
       alert("Transaction Added!")
+    } catch (e: any) {
+      alert(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openEditTenant = (t: Tenant) => {
+    setEditingTenant(t)
+    setEditForm({
+      name: t.full_name || "",
+      phone: t.phone || "",
+      property: t.room_number || "",
+      rent: t.rent_amount != null ? String(t.rent_amount) : "",
+      deposit: t.deposit != null ? String(t.deposit) : "",
+      aadhaar: t.id_number || "",
+      start_date: t.start_date ? String(t.start_date).slice(0, 10) : "",
+      notes: t.address || "",
+      office_name: t.office_name || "",
+      office_address: t.office_address || "",
+      status: t.status || "active"
+    })
+  }
+
+  const handleEditTenant = async () => {
+    if (!editForm.name || !editForm.phone) {
+      alert("Name and Phone required")
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch("/api/tenants", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingTenant.id,
+          name: editForm.name,
+          phone: editForm.phone,
+          property: editForm.property,
+          rent: editForm.rent ? Number(editForm.rent) : null,
+          deposit: editForm.deposit ? Number(editForm.deposit) : null,
+          start_date: editForm.start_date || null,
+          status: editForm.status,
+          aadhaar: editForm.aadhaar,
+          notes: editForm.notes,
+          office_name: editForm.office_name,
+          office_address: editForm.office_address
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setEditingTenant(null)
+      loadTenants()
     } catch (e: any) {
       alert(e.message)
     } finally {
@@ -165,7 +225,11 @@ export default function ManagerPage() {
                   <p className="text-[13px] text-gray-500">{t.phone}</p>
                   {t.office_name && <p className="text-[12px] text-gray-400 mt-0.5">🏢 {t.office_name}{t.office_address ? ` • ${t.office_address}` : ""}</p>}
                 </div>
-                <button onClick={() => setShowTrans(t)} className="px-4 py-2 rounded-xl bg-black text-white font-bold text-[13px] shrink-0 ml-2">+ Trans</button>
+                <div className="flex flex-col gap-1.5 shrink-0 ml-2">
+                  <button onClick={() => setShowTrans(t)} className="px-3 py-1.5 rounded-xl bg-black text-white font-bold text-[12px]">+ Trans</button>
+                  <button onClick={() => openEditTenant(t)} className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-800 font-bold text-[12px]">Edit</button>
+                  <button onClick={() => setDetailsTenant(t)} className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-600 font-bold text-[12px]">Details</button>
+                </div>
               </div>
             </div>
           ))}
@@ -273,6 +337,106 @@ export default function ManagerPage() {
             <div className="shrink-0 bg-white px-5 py-4 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 flex gap-3">
               <button onClick={() => setShowTrans(null)} className="flex-1 py-4 rounded-2xl bg-gray-100 font-bold text-[16px] text-gray-900">Cancel</button>
               <button onClick={handleAddTransaction} disabled={loading} className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-[16px] disabled:opacity-50">{loading? "Adding..." : "Add Payment"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== EDIT TENANT MODAL ===== */}
+      {editingTenant && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center">
+          <div className="bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[32px] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden mt-12 sm:mt-0">
+            <div className="shrink-0 bg-white rounded-t-[32px] px-6 pt-4 pb-3 border-b border-gray-100">
+              <div className="w-10 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden"></div>
+              <div className="flex justify-between items-center">
+                <h2 className="text-[20px] font-bold text-gray-900">Edit Tenant</h2>
+                <button onClick={() => setEditingTenant(null)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-[14px]">✕</button>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4 overscroll-contain">
+              <div>
+                <p className="text-[11px] font-bold tracking-widest text-gray-500 mb-2 ml-1">BASIC</p>
+                <div className="space-y-3">
+                  <input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value })} placeholder="Name" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+                  <input value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value })} placeholder="Phone" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+                  <div className="flex gap-3">
+                    <input value={editForm.property} onChange={e => setEditForm({...editForm, property: e.target.value })} placeholder="Room no" className="flex-1 px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+                    <input value={editForm.rent} onChange={e => setEditForm({...editForm, rent: e.target.value })} placeholder="Rent" className="flex-1 px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+                  </div>
+                  <select value={editForm.status} onChange={e => setEditForm({...editForm, status: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
+                    <option value="active">Active</option>
+                    <option value="notice">Notice</option>
+                    <option value="vacated">Vacated</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold tracking-widest text-gray-500 mb-2 ml-1">OFFICE</p>
+                <div className="space-y-3">
+                  <input value={editForm.office_name} onChange={e => setEditForm({...editForm, office_name: e.target.value })} placeholder="Office name" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+                  <input value={editForm.office_address} onChange={e => setEditForm({...editForm, office_address: e.target.value })} placeholder="Office address" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold tracking-widest text-gray-500 mb-2 ml-1">OTHER DETAILS</p>
+                <div className="space-y-3">
+                  <input value={editForm.deposit} onChange={e => setEditForm({...editForm, deposit: e.target.value })} placeholder="Deposit" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+                  <input value={editForm.aadhaar} onChange={e => setEditForm({...editForm, aadhaar: e.target.value })} placeholder="Aadhaar / ID number" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+                  <input value={editForm.start_date} onChange={e => setEditForm({...editForm, start_date: e.target.value })} type="date" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+                  <input value={editForm.notes} onChange={e => setEditForm({...editForm, notes: e.target.value })} placeholder="Notes / Address" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0 bg-white px-5 py-4 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 flex gap-3">
+              <button onClick={() => setEditingTenant(null)} className="flex-1 py-4 rounded-2xl bg-gray-100 font-bold text-[16px] text-gray-900">Cancel</button>
+              <button onClick={handleEditTenant} disabled={loading} className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-[16px] disabled:opacity-50">{loading ? "Saving..." : "Save Changes"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== TENANT DETAILS MODAL ===== */}
+      {detailsTenant && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center">
+          <div className="bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[32px] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden mt-12 sm:mt-0">
+            <div className="shrink-0 bg-white rounded-t-[32px] px-6 pt-4 pb-3 border-b border-gray-100">
+              <div className="w-10 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden"></div>
+              <div className="flex justify-between items-center">
+                <h2 className="text-[20px] font-bold text-gray-900">Tenant Details</h2>
+                <button onClick={() => setDetailsTenant(null)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-[14px]">✕</button>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 py-4 overscroll-contain">
+              <div className="bg-[#f5f6f8] rounded-2xl p-4 space-y-3">
+                {[
+                  ["NAME", detailsTenant.full_name],
+                  ["PHONE", detailsTenant.phone],
+                  ["ROOM", detailsTenant.room_number],
+                  ["RENT", detailsTenant.rent_amount != null ? `₹${detailsTenant.rent_amount}` : null],
+                  ["DEPOSIT", detailsTenant.deposit != null ? `₹${detailsTenant.deposit}` : null],
+                  ["STATUS", detailsTenant.status],
+                  ["START DATE", detailsTenant.start_date ? new Date(detailsTenant.start_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : null],
+                  ["ID NUMBER", detailsTenant.id_number],
+                  ["ADDRESS", detailsTenant.address],
+                  ["OFFICE NAME", detailsTenant.office_name],
+                  ["OFFICE ADDRESS", detailsTenant.office_address],
+                ].map(([label, value]) => value ? (
+                  <div key={label}>
+                    <p className="text-[11px] font-bold tracking-widest text-gray-400">{label}</p>
+                    <p className="text-[16px] font-semibold">{value}</p>
+                  </div>
+                ) : null)}
+              </div>
+            </div>
+
+            <div className="shrink-0 bg-white px-5 py-4 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 flex gap-3">
+              <button onClick={() => { setDetailsTenant(null); openEditTenant(detailsTenant) }} className="flex-1 py-4 rounded-2xl bg-gray-100 font-bold text-[16px] text-gray-900">Edit</button>
+              <button onClick={() => setDetailsTenant(null)} className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-[16px]">Close</button>
             </div>
           </div>
         </div>
