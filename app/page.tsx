@@ -54,7 +54,7 @@ export default function Home() {
         )}
         {msg && <div className="mt-4 p-3 rounded-xl bg-gray-100 text-[13px] break-all">{msg}</div>}
       </div>
-      <div className="mt-4 text-[11px] text-gray-500">If stuck, open Vercel > Logs > Runtime Logs</div>
+      <div className="mt-4 text-[11px] text-gray-500">If stuck, open Vercel Logs section in dashboard</div>
     </div>
   )
 }
