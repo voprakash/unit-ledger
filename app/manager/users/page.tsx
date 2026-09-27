@@ -111,6 +111,7 @@ export default function UsersPage() {
           <h1 className="font-bold text-[18px]">👥 Users</h1>
           <div className="flex gap-2">
             <button onClick={() => window.location.href = "/manager"} className="px-4 py-2 bg-gray-100 rounded-full text-[13px] font-bold">🏠 Tenants</button>
+            <button onClick={() => window.location.href = "/manager/reports"} className="px-4 py-2 bg-gray-100 rounded-full text-[13px] font-bold">📊 Reports</button>
             <button onClick={handleLogout} className="px-3 py-2 bg-gray-100 rounded-full text-[13px]">Logout</button>
           </div>
         </div>

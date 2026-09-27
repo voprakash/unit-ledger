@@ -134,6 +134,7 @@ export default function ManagerPage() {
         <div className="max-w-md mx-auto px-4 py-3 flex justify-between items-center">
           <h1 className="font-bold text-[18px]">🏠 Manager</h1>
           <div className="flex gap-2">
+            <button onClick={() => window.location.href = "/manager/reports"} className="px-4 py-2 bg-gray-100 rounded-full text-[13px] font-bold">📊 Reports</button>
             <button onClick={() => window.location.href = "/manager/users"} className="px-4 py-2 bg-gray-100 rounded-full text-[13px] font-bold">👥 Users</button>
             <button onClick={() => setShowAddTenant(true)} className="px-4 py-2 bg-black text-white rounded-full text-[13px] font-bold">+ Add Tenant</button>
             <button onClick={handleLogout} className="px-3 py-2 bg-gray-100 rounded-full text-[13px]">Logout</button>
