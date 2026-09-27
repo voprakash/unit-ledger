@@ -38,6 +38,17 @@ alter table tenants add column if not exists status text;
 alter table tenants add column if not exists deposit numeric;
 alter table tenants add column if not exists start_date timestamptz;
 
+-- Lock the table down: the app uses the service_role key (bypasses RLS),
+-- so the API is unaffected, but anon/authenticated keys can't read it directly.
+alter table tenants enable row level security;
+
+drop policy if exists "service role full access" on tenants;
+create policy "service role full access"
+  on tenants for all
+  to service_role
+  using (true)
+  with check (true);
+
 -- Column mapping used by /api/tenants (form field -> table column):
 --   name          -> full_name
 --   phone         -> phone
