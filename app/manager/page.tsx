@@ -8,6 +8,15 @@ export default function ManagerPage() {
   const [showAddTenant, setShowAddTenant] = useState(false)
   const [loading, setLoading] = useState(false)
   const [session, setSession] = useState<any>(null)
+  const [search, setSearch] = useState("")
+  const [showTrans, setShowTrans] = useState<any>(null)
+  const [transForm, setTransForm] = useState({
+    amount: "",
+    type: "rent",
+    method: "cash",
+    description: "",
+    date: new Date().toISOString().split("T")[0]
+  })
 
   const [form, setForm] = useState({
     name: "",
@@ -34,6 +43,45 @@ export default function ManagerPage() {
     const res = await fetch("/api/tenants")
     const data = await res.json()
     setTenants(Array.isArray(data)? data : [])
+  }
+
+  const filteredTenants = tenants.filter(t =>
+    t.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+    t.phone?.includes(search) ||
+    t.room_number?.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const handleAddTransaction = async () => {
+    if (!transForm.amount) {
+      alert("Amount required")
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant_id: showTrans.id,
+          tenant_name: showTrans.full_name,
+          type: transForm.type,
+          amount: Number(transForm.amount),
+          method: transForm.method,
+          notes: transForm.description,
+          date: transForm.date,
+          created_by: session?.phone
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setShowTrans(null)
+      setTransForm({ amount: "", type: "rent", method: "cash", description: "", date: new Date().toISOString().split("T")[0] })
+      alert("Transaction Added!")
+    } catch (e: any) {
+      alert(e.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleLogout = async () => {
@@ -98,17 +146,30 @@ export default function ManagerPage() {
           <p className="text-[20px] font-bold">{tenants.length} Tenants</p>
         </div>
 
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search name, phone, room..."
+          className="w-full px-5 py-3 rounded-2xl border border-gray-200 bg-white text-[15px] mb-4 outline-none focus:ring-2 focus:ring-black"
+        />
+
         <div className="space-y-3">
-          {tenants.map((t) => (
-            <div key={t.id} className="bg-white rounded-2xl p-4 border flex justify-between">
-              <div>
-                <p className="font-bold">{t.full_name}</p>
-                <p className="text-[13px] text-gray-500">{t.room_number} • ₹{t.rent_amount} • {t.status}</p>
-                {t.office_name && <p className="text-[12px] text-gray-400 mt-0.5">🏢 {t.office_name}{t.office_address ? ` • ${t.office_address}` : ""}</p>}
+          {filteredTenants.map((t) => (
+            <div key={t.id} className="bg-white rounded-2xl p-4 border">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-bold">{t.full_name} <span className={`ml-1 text-[11px] px-2 py-0.5 rounded-full ${t.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>{t.status}</span></p>
+                  <p className="text-[13px] text-gray-500">{t.room_number ? `Room ${t.room_number}` : ""} • ₹{t.rent_amount} / month</p>
+                  <p className="text-[13px] text-gray-500">{t.phone}</p>
+                  {t.office_name && <p className="text-[12px] text-gray-400 mt-0.5">🏢 {t.office_name}{t.office_address ? ` • ${t.office_address}` : ""}</p>}
+                </div>
+                <button onClick={() => setShowTrans(t)} className="px-4 py-2 rounded-xl bg-black text-white font-bold text-[13px] shrink-0 ml-2">+ Trans</button>
               </div>
-              <p className="text-[13px]">{t.phone}</p>
             </div>
           ))}
+          {filteredTenants.length === 0 && (
+            <p className="text-center text-gray-400 text-[14px] py-6">No tenants found</p>
+          )}
         </div>
       </div>
 
@@ -168,6 +229,48 @@ export default function ManagerPage() {
             <div className="shrink-0 bg-white px-5 py-4 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 flex gap-3">
               <button onClick={() => setShowAddTenant(false)} className="flex-1 py-4 rounded-2xl bg-gray-100 font-bold text-[16px] text-gray-900">Cancel</button>
               <button onClick={handleAddTenant} disabled={loading} className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-[16px] disabled:opacity-50">{loading? "Saving..." : "Save Tenant"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== ADD TRANSACTION MODAL ===== */}
+      {showTrans && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center">
+          <div className="bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[32px] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden mt-12 sm:mt-0">
+            <div className="shrink-0 bg-white rounded-t-[32px] px-6 pt-4 pb-3 border-b border-gray-100">
+              <div className="w-10 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden"></div>
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-[20px] font-bold text-gray-900">Add Transaction</h2>
+                  <p className="text-[13px] text-gray-500">{showTrans.full_name} • {showTrans.room_number ? `Room ${showTrans.room_number}` : ""}</p>
+                </div>
+                <button onClick={() => setShowTrans(null)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-[14px]">✕</button>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3 overscroll-contain">
+              <input value={transForm.amount} onChange={e => setTransForm({...transForm, amount: e.target.value })} placeholder="Amount ₹" type="number" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+              <select value={transForm.type} onChange={e => setTransForm({...transForm, type: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
+                <option value="rent">Rent</option>
+                <option value="deposit">Deposit</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="electricity">Electricity</option>
+                <option value="other">Other</option>
+              </select>
+              <select value={transForm.method} onChange={e => setTransForm({...transForm, method: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="bank">Bank Transfer</option>
+                <option value="other">Other</option>
+              </select>
+              <input type="date" value={transForm.date} onChange={e => setTransForm({...transForm, date: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+              <input value={transForm.description} onChange={e => setTransForm({...transForm, description: e.target.value })} placeholder="Description / notes" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+            </div>
+
+            <div className="shrink-0 bg-white px-5 py-4 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 flex gap-3">
+              <button onClick={() => setShowTrans(null)} className="flex-1 py-4 rounded-2xl bg-gray-100 font-bold text-[16px] text-gray-900">Cancel</button>
+              <button onClick={handleAddTransaction} disabled={loading} className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-[16px] disabled:opacity-50">{loading? "Adding..." : "Add Payment"}</button>
             </div>
           </div>
         </div>
