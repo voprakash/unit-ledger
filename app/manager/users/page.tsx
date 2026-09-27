@@ -10,6 +10,9 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(false)
   const [session, setSession] = useState<any>(null)
   const [form, setForm] = useState({ name: "", phone: "", role: "member" })
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [editForm, setEditForm] = useState({ name: "", phone: "", role: "member" })
+  const [detailsUser, setDetailsUser] = useState<User | null>(null)
 
   useEffect(() => {
     const s = localStorage.getItem("team_session")
@@ -46,6 +49,34 @@ export default function UsersPage() {
       if (!res.ok) throw new Error(data.error)
       setShowAdd(false)
       setForm({ name: "", phone: "", role: "member" })
+      loadUsers()
+    } catch (e: any) {
+      alert(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openEdit = (u: User) => {
+    setEditingUser(u)
+    setEditForm({ name: u.name || "", phone: u.phone || "", role: u.role || "member" })
+  }
+
+  const handleEditUser = async () => {
+    if (!editForm.name || !editForm.phone) {
+      alert("Name and Phone required")
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch("/api/manager/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editingUser.id, ...editForm })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setEditingUser(null)
       loadUsers()
     } catch (e: any) {
       alert(e.message)
@@ -107,7 +138,11 @@ export default function UsersPage() {
                 <p className="font-bold">{u.name} <span className={`ml-1 text-[11px] px-2 py-0.5 rounded-full ${u.role === "admin" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>{u.role || "member"}</span></p>
                 <p className="text-[13px] text-gray-500">{u.phone}</p>
               </div>
-              <button onClick={() => handleDeleteUser(u)} className="px-3 py-2 rounded-xl bg-red-50 text-red-600 font-bold text-[13px]">Remove</button>
+              <div className="flex gap-2 shrink-0 ml-2">
+                <button onClick={() => openEdit(u)} className="px-3 py-2 rounded-xl bg-gray-100 text-gray-800 font-bold text-[13px]">Edit</button>
+                <button onClick={() => setDetailsUser(u)} className="px-3 py-2 rounded-xl bg-blue-50 text-blue-600 font-bold text-[13px]">Details</button>
+                <button onClick={() => handleDeleteUser(u)} className="px-3 py-2 rounded-xl bg-red-50 text-red-600 font-bold text-[13px]">Remove</button>
+              </div>
             </div>
           ))}
           {filtered.length === 0 && (
@@ -141,6 +176,77 @@ export default function UsersPage() {
             <div className="shrink-0 bg-white px-5 py-4 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 flex gap-3">
               <button onClick={() => setShowAdd(false)} className="flex-1 py-4 rounded-2xl bg-gray-100 font-bold text-[16px] text-gray-900">Cancel</button>
               <button onClick={handleAddUser} disabled={loading} className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-[16px] disabled:opacity-50">{loading ? "Adding..." : "Add User"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== EDIT USER MODAL ===== */}
+      {editingUser && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center">
+          <div className="bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[32px] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden mt-12 sm:mt-0">
+            <div className="shrink-0 bg-white rounded-t-[32px] px-6 pt-4 pb-3 border-b border-gray-100">
+              <div className="w-10 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden"></div>
+              <div className="flex justify-between items-center">
+                <h2 className="text-[20px] font-bold text-gray-900">Edit User</h2>
+                <button onClick={() => setEditingUser(null)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-[14px]">✕</button>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3 overscroll-contain">
+              <input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value })} placeholder="Name" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+              <input value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value })} placeholder="Phone (10 digits)" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+              <select value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
+                <option value="member">Member</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+
+            <div className="shrink-0 bg-white px-5 py-4 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 flex gap-3">
+              <button onClick={() => setEditingUser(null)} className="flex-1 py-4 rounded-2xl bg-gray-100 font-bold text-[16px] text-gray-900">Cancel</button>
+              <button onClick={handleEditUser} disabled={loading} className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-[16px] disabled:opacity-50">{loading ? "Saving..." : "Save Changes"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== USER DETAILS MODAL ===== */}
+      {detailsUser && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center">
+          <div className="bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[32px] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden mt-12 sm:mt-0">
+            <div className="shrink-0 bg-white rounded-t-[32px] px-6 pt-4 pb-3 border-b border-gray-100">
+              <div className="w-10 h-1.5 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden"></div>
+              <div className="flex justify-between items-center">
+                <h2 className="text-[20px] font-bold text-gray-900">User Details</h2>
+                <button onClick={() => setDetailsUser(null)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-[14px]">✕</button>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 py-4 overscroll-contain">
+              <div className="bg-[#f5f6f8] rounded-2xl p-4 space-y-3">
+                <div>
+                  <p className="text-[11px] font-bold tracking-widest text-gray-400">NAME</p>
+                  <p className="text-[16px] font-semibold">{detailsUser.name}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold tracking-widest text-gray-400">PHONE</p>
+                  <p className="text-[16px] font-semibold">{detailsUser.phone}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold tracking-widest text-gray-400">ROLE</p>
+                  <p className="text-[16px] font-semibold capitalize">{detailsUser.role || "member"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold tracking-widest text-gray-400">ADDED ON</p>
+                  <p className="text-[16px] font-semibold">{detailsUser.created_at ? new Date(detailsUser.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}</p>
+                </div>
+              </div>
+              <p className="text-[12px] text-gray-400 px-1 mt-3">This user can log in with WhatsApp OTP and use the Team Ledger bot.</p>
+            </div>
+
+            <div className="shrink-0 bg-white px-5 py-4 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 flex gap-3">
+              <button onClick={() => { setDetailsUser(null); openEdit(detailsUser) }} className="flex-1 py-4 rounded-2xl bg-gray-100 font-bold text-[16px] text-gray-900">Edit</button>
+              <button onClick={() => setDetailsUser(null)} className="flex-1 py-4 rounded-2xl bg-black text-white font-bold text-[16px]">Close</button>
             </div>
           </div>
         </div>
