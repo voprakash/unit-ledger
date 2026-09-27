@@ -78,83 +78,162 @@ export async function POST(req: NextRequest) {
   try {
     const lower = text.toLowerCase().trim();
 
-    // EXPENSE TYPES - these will SUBTRACT in total
+    // Raw vocab the bot understands (normalized to the app's canonical types below)
     const expenseTypes = ["expense", "other", "water", "gas", "electricity", "maintenance", "repair", "bill"];
-    // INCOME TYPES - these will ADD
     const incomeTypes = ["rent", "deposit", "sale", "payment", "advance"];
+
+    // Canonical transaction types used by the app
+    const normalizeType = (t: string): string => {
+      const w = String(t || "").toLowerCase()
+      if (w === "rent") return "rent"
+      if (w === "deposit") return "deposit"
+      if (w === "maintenance" || w === "repair") return "maintenance"
+      if (w === "electricity" || w === "bill") return "electricity"
+      if (w === "water") return "water"
+      if (w === "gas") return "gas"
+      return "other"
+    }
+    const EXPENSE = new Set(["water", "gas", "electricity", "maintenance", "other"])
+
+    // Soft-deleted rows are hidden everywhere (JS filter so the bot works
+    // even before the transactions_audit.sql migration is run)
+    const activeOnly = (rows: any[]) => (rows || []).filter((x: any) => !x.deleted_at)
+
+    const findTenantByUnit = async (unit: string) => {
+      const { data } = await supabase.from("tenants")
+        .select("id,full_name,room_number").ilike("room_number", unit).limit(1).maybeSingle()
+      return data as any
+    }
 
     // Only allow team members in allowed_users to use the bot
     const senderDigits = String(from || "").replace(/\D/g, "")
     const senderNational = senderDigits.slice(-10)
     const { data: sender } = await supabase.from("allowed_users")
-      .select("id").ilike("phone", `%${senderNational}%`).limit(1).maybeSingle()
+      .select("id,role").ilike("phone", `%${senderNational}%`).limit(1).maybeSingle()
     if (!sender) {
       reply = "⛔ This number is not authorized for Team Ledger."
-    } else if (lower === "report" || lower === "report all" || lower === "all report") {
-      const { data } = await supabase.from("entries").select("*").order("entry_date", {ascending:true}).limit(200);
-      if (!data?.length) reply = "No entries yet.";
-      else {
-        let total = 0;
-        let lines = data.map((e:any)=>{
-          let amt = Number(e.amount);
-          let isExpense = expenseTypes.includes(e.type?.toLowerCase());
-          if (isExpense) total -= amt; else total += amt;
-          return `${e.unit_code} | ${e.customer_name||'-'} | ${fmtDate(e.entry_date)} | ₹${e.amount} | ${e.type}${e.note?'- '+e.note:''} | #${e.id}`;
-        });
-        reply = `📊 ALL UNITS REPORT\nUnit | Name | Date(dd mm yy) | Amount | Type\n----------------------------------------\n` + lines.join("\n") + `\n----------------------------------------\nTOTAL NET: ₹${total}`;
-      }
     } else {
-      const unit_code = parts[0]?.toUpperCase();
+      const senderIsAdmin = String((sender as any).role || "").toLowerCase() === "admin"
+      // Managers only see/touch their own transactions — same rule as the app
+      const scopeByOwner = (q: any) => senderIsAdmin ? q : q.eq("created_by", senderNational)
 
-      if (parts[1]?.toLowerCase() === "delete") {
-        if (parts[2]?.toLowerCase() === "last") {
-          const { data } = await supabase.from("entries").select("id").eq("unit_code", unit_code).order("id", {ascending:false}).limit(1).single();
-          if (data) { await supabase.from("entries").delete().eq("id", (data as any).id); reply = `🗑️ Deleted last entry for ${unit_code}`; }
-        } else {
-          let id = parseInt(parts[2]); if (id) { await supabase.from("entries").delete().eq("id", id); reply = `🗑️ Deleted id ${id}`; }
-        }
-      } else if (parts[1]?.toLowerCase() === "report" || parts[0]?.toLowerCase() === "report") {
-        let u = unit_code; if (parts[0].toLowerCase() === "report") u = parts[1]?.toUpperCase();
-        const { data } = await supabase.from("entries").select("*").eq("unit_code", u).order("entry_date", {ascending:true}).limit(100);
-        if (data?.length) {
+      if (lower === "report" || lower === "report all" || lower === "all report") {
+        const { data: allTenants } = await supabase.from("tenants").select("id,room_number").limit(1000)
+        const roomByTenant = new Map<string, string>()
+        for (const t of (allTenants || [])) roomByTenant.set(String((t as any).id), (t as any).room_number || "")
+        const { data } = await scopeByOwner(supabase.from("transactions").select("*"))
+          .order("date", { ascending: true }).limit(200)
+        const rows = activeOnly(data)
+        if (!rows.length) reply = "No entries yet.";
+        else {
           let total = 0;
-          let lines = data.map((e:any)=>{
-            let amt = Number(e.amount);
-            let isExpense = expenseTypes.includes(e.type?.toLowerCase());
-            if (isExpense) total -= amt; else total += amt;
-            return `${e.unit_code} | ${e.customer_name||'-'} | ${fmtDate(e.entry_date)} | ₹${e.amount} | ${e.type}${e.note?'- '+e.note:''} | #${e.id}`;
+          let lines = rows.map((e: any) => {
+            let amt = Number(e.amount) || 0;
+            let t = normalizeType(e.type);
+            if (EXPENSE.has(t)) total -= amt; else total += amt;
+            const room = roomByTenant.get(String(e.tenant_id)) || "-";
+            return `${room} | ${e.tenant_name || '-'} | ${fmtDate(e.date || e.created_at)} | ₹${e.amount} | ${t}`;
           });
-          reply = `📊 REPORT: ${u}\nUnit | Name | Date(dd mm yy) | Amount | Type\n----------------------------------------\n` + lines.join("\n") + `\n----------------------------------------\nTOTAL: ₹${total}`;
-        } else reply = `No entries for ${u}`;
-      } else {
-        // ENTRY: G201 other 500 water bill OR G201 John rent 2000
-        const customer_name = parts[1] || "";
-        let entry_date = parseDateFromParts(parts) || new Date().toISOString().slice(0,10);
-
-        // Find type - check for 'other' first
-        let type = "rent";
-        let allTypes = [...incomeTypes,...expenseTypes];
-        for (let p of parts) {
-          let low = p.toLowerCase();
-          if (allTypes.includes(low)) { type = low; break; }
+          reply = `📊 ALL UNITS REPORT\nRoom | Name | Date(dd mm yy) | Amount | Type\n----------------------------------------\n` + lines.join("\n") + `\n----------------------------------------\nTOTAL NET: ₹${total}`;
         }
-        // If second word is 'other', treat as expense type = other
-        if (parts[1]?.toLowerCase() === "other") type = "other";
+      } else {
+        const unit_code = parts[0]?.toUpperCase();
 
-        let amount = 0;
-        for (let p of parts) { let n = parseFloat(p); if (!isNaN(n) && n>10 &&!p.includes('/') &&!p.includes('-')) { if (p.length>=2) { amount=n; break; } } }
-        if (!amount) for (let p of parts) { let n = parseFloat(p); if (!isNaN(n) && n>0) amount=n; }
-
-        let amountIndex = parts.findIndex((p: string) => parseFloat(p) === amount);
-        let noteParts = amountIndex>=0? parts.slice(amountIndex+1) : [];
-
-        if (unit_code && amount > 0) {
-          const { data, error } = await supabase.from("entries").insert({ unit_code, customer_name: customer_name.toLowerCase()==="other"?"-":customer_name, type, amount, entry_date, note: noteParts.join(" "), created_by: from }).select().single();
-          if (error) throw error;
-          let sign = expenseTypes.includes(type)? "-" : "+";
-          reply = `✅ Saved #${(data as any).id}: ${unit_code} | ${fmtDate(entry_date)} | ${sign}₹${amount} | ${type} ${noteParts.join(" ")}`;
+        if (parts[1]?.toLowerCase() === "delete") {
+          const tenant = await findTenantByUnit(unit_code || "")
+          if (!tenant) {
+            reply = `No tenant found for ${unit_code}`;
+          } else if (!parts[2]) {
+            reply = `Use:\n${unit_code} delete last`;
+          } else {
+            const { data } = await scopeByOwner(supabase.from("transactions").select("*"))
+              .eq("tenant_id", tenant.id).order("created_at", { ascending: false }).limit(10)
+            const rows = activeOnly(data)
+            const softDelete = async (id: number) => {
+              const { error } = await supabase.from("transactions")
+                .update({ deleted_at: new Date().toISOString() }).eq("id", id)
+              if (error) {
+                return /deleted_at/i.test(error.message)
+                  ? "⚠️ Trash is not set up yet — ask admin to run the migration."
+                  : `❌ ${error.message}`
+              }
+              return null
+            }
+            if (parts[2].toLowerCase() === "last") {
+              const target = rows[0]
+              if (target) {
+                const err = await softDelete(Number(target.id))
+                reply = err || `🗑️ Moved to trash: ${unit_code} | ₹${target.amount} | ${normalizeType(target.type)} (restore from the app)`;
+              } else reply = `Nothing to delete for ${unit_code}`;
+            } else {
+              const id = parseInt(parts[2])
+              const target = id ? rows.find((x: any) => Number(x.id) === id) : null
+              if (target) {
+                const err = await softDelete(Number(target.id))
+                reply = err || `🗑️ Moved to trash: #${id} (restore from the app)`;
+              } else reply = `No matching entry #${parts[2]} for ${unit_code}`;
+            }
+          }
+        } else if (parts[1]?.toLowerCase() === "report" || parts[0]?.toLowerCase() === "report") {
+          let u = unit_code; if (parts[0].toLowerCase() === "report") u = parts[1]?.toUpperCase();
+          const tenant = await findTenantByUnit(u || "")
+          if (!tenant) {
+            reply = `No tenant found for ${u}`;
+          } else {
+            const { data } = await scopeByOwner(supabase.from("transactions").select("*"))
+              .eq("tenant_id", tenant.id).order("date", { ascending: true }).limit(100)
+            const rows = activeOnly(data)
+            if (rows.length) {
+              let total = 0;
+              let lines = rows.map((e: any) => {
+                let amt = Number(e.amount) || 0;
+                let t = normalizeType(e.type);
+                if (EXPENSE.has(t)) total -= amt; else total += amt;
+                return `${u} | ${e.tenant_name || '-'} | ${fmtDate(e.date || e.created_at)} | ₹${e.amount} | ${t}${e.notes ? ' - ' + e.notes : ''}`;
+              });
+              reply = `📊 REPORT: ${u}\nRoom | Name | Date(dd mm yy) | Amount | Type\n----------------------------------------\n` + lines.join("\n") + `\n----------------------------------------\nTOTAL: ₹${total}`;
+            } else reply = `No entries for ${u}`;
+          }
         } else {
-          reply = `Use:\nG201 rent 2000 John\nG201 other 500 water bill\nG201 report`;
+          // ENTRY: G201 other 500 water bill OR G201 John rent 2000
+          const customer_name = parts[1] || "";
+          let entry_date = parseDateFromParts(parts) || new Date().toISOString().slice(0,10);
+
+          // Find type - check for 'other' first
+          let rawType = "rent";
+          let allTypes = [...incomeTypes,...expenseTypes];
+          for (let p of parts) {
+            let low = p.toLowerCase();
+            if (allTypes.includes(low)) { rawType = low; break; }
+          }
+          // If second word is 'other', treat as expense type = other
+          if (parts[1]?.toLowerCase() === "other") rawType = "other";
+          const type = normalizeType(rawType);
+
+          let amount = 0;
+          for (let p of parts) { let n = parseFloat(p); if (!isNaN(n) && n>10 &&!p.includes('/') &&!p.includes('-')) { if (p.length>=2) { amount=n; break; } } }
+          if (!amount) for (let p of parts) { let n = parseFloat(p); if (!isNaN(n) && n>0) amount=n; }
+
+          let amountIndex = parts.findIndex((p: string) => parseFloat(p) === amount);
+          let noteParts = amountIndex>=0? parts.slice(amountIndex+1) : [];
+
+          if (unit_code && amount > 0) {
+            const tenant = await findTenantByUnit(unit_code)
+            const { data, error } = await supabase.from("transactions").insert({
+              tenant_id: tenant?.id || null,
+              tenant_name: tenant?.full_name || (customer_name.toLowerCase() === "other" ? "-" : customer_name) || unit_code,
+              type,
+              amount,
+              notes: noteParts.join(" ") || null,
+              date: entry_date,
+              created_by: senderNational,
+            }).select().single();
+            if (error) throw error;
+            let sign = EXPENSE.has(type) ? "-" : "+";
+            reply = `✅ Saved #${(data as any).id}: ${unit_code} | ${fmtDate(entry_date)} | ${sign}₹${amount} | ${type}${noteParts.length ? " " + noteParts.join(" ") : ""}`;
+          } else {
+            reply = `Use:\nG201 rent 2000 John\nG201 water 500 bill\nG201 report\nG201 delete last`;
+          }
         }
       }
     }
