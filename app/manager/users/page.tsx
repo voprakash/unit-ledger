@@ -19,6 +19,10 @@ export default function UsersPage() {
     if (s) setSession(JSON.parse(s))
     else window.location.href = "/"
     loadUsers()
+    // Refresh live role from server (DB is source of truth, not localStorage)
+    fetch("/api/auth/me").then(r => r.json()).then(me => {
+      if (me && me.role) setSession((prev: any) => ({ ...(prev || {}), role: me.role, name: me.name || prev?.name, phone: me.phone || prev?.phone }))
+    }).catch(() => {})
   }, [])
 
   const loadUsers = async () => {
@@ -231,22 +235,19 @@ export default function UsersPage() {
 
             <div className="overflow-y-auto flex-1 px-5 py-4 overscroll-contain">
               <div className="bg-[#f5f6f8] rounded-2xl p-4 space-y-3">
-                <div>
-                  <p className="text-[11px] font-bold tracking-widest text-gray-400">NAME</p>
-                  <p className="text-[16px] font-semibold">{detailsUser.name}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold tracking-widest text-gray-400">PHONE</p>
-                  <p className="text-[16px] font-semibold">{detailsUser.phone}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold tracking-widest text-gray-400">ROLE</p>
-                  <p className="text-[16px] font-semibold capitalize">{detailsUser.role || "member"}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold tracking-widest text-gray-400">ADDED ON</p>
-                  <p className="text-[16px] font-semibold">{detailsUser.created_at ? new Date(detailsUser.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}</p>
-                </div>
+                {[
+                  ["NAME", detailsUser.name],
+                  ["PHONE", detailsUser.phone],
+                  ["ROLE", detailsUser.role ? String(detailsUser.role).toUpperCase() : null],
+                  ["CREATED BY", detailsUser.created_by || "—"],
+                  ["USER ID", detailsUser.id ? String(detailsUser.id) : null],
+                  ["ADDED ON", detailsUser.created_at ? new Date(detailsUser.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : null],
+                ].map(([label, value]) => value ? (
+                  <div key={label}>
+                    <p className="text-[11px] font-bold tracking-widest text-gray-400">{label}</p>
+                    <p className="text-[16px] font-semibold">{value}</p>
+                  </div>
+                ) : null)}
               </div>
               <p className="text-[12px] text-gray-400 px-1 mt-3">This user can log in with WhatsApp OTP and use the Team Ledger bot.</p>
             </div>
