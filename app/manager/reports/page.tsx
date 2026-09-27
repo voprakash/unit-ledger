@@ -33,6 +33,8 @@ export default function ReportsPage() {
   const [typeFilter, setTypeFilter] = useState("all")
   const [fromDate, setFromDate] = useState(() => monthRange(0)[0])
   const [toDate, setToDate] = useState(() => isoDay(new Date()))
+  const [isAdminUI, setIsAdminUI] = useState(false)
+  const [sending, setSending] = useState(false)
 
   const resetDates = () => {
     const [f, t] = monthRange(0)
@@ -60,7 +62,28 @@ export default function ReportsPage() {
       setTxns(Array.isArray(x) ? x : [])
       setLoading(false)
     }).catch(() => setLoading(false))
+    fetch("/api/auth/me").then(r => r.json()).then(me => {
+      if (me && String(me.role || "").toLowerCase() === "admin") setIsAdminUI(true)
+    }).catch(() => {})
   }, [])
+
+  const sendWhatsAppReport = async () => {
+    setSending(true)
+    try {
+      const res = await fetch("/api/reports/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Send failed")
+      alert(`Monthly report for ${data.month} sent to your WhatsApp ✓`)
+    } catch (e: any) {
+      alert(e.message)
+    } finally {
+      setSending(false)
+    }
+  }
 
   const tenantById = useMemo(() => {
     const m: Record<string, Tenant> = {}
@@ -251,7 +274,13 @@ export default function ReportsPage() {
               )}
             </div>
 
-            <button onClick={() => window.print()} className="w-full py-4 rounded-2xl bg-black text-white font-bold text-[16px] mb-8 print:hidden">🖨️ Print / Save PDF</button>
+            <button onClick={() => window.print()} className="w-full py-4 rounded-2xl bg-black text-white font-bold text-[16px] mb-3 print:hidden">🖨️ Print / Save PDF</button>
+            {isAdminUI && (
+              <button onClick={sendWhatsAppReport} disabled={sending} className="w-full py-4 rounded-2xl bg-green-600 text-white font-bold text-[16px] mb-8 disabled:opacity-50 print:hidden">
+                {sending ? "Sending..." : "📤 Send Monthly Report on WhatsApp"}
+              </button>
+            )}
+            {!isAdminUI && <div className="mb-8" />}
           </>
         )}
       </div>
