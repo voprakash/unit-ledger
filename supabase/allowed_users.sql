@@ -11,12 +11,14 @@ create table if not exists allowed_users (
   name text,
   phone text,
   role text not null default 'member',
+  created_by text,
   created_at timestamptz not null default now()
 );
 
 alter table allowed_users add column if not exists name text;
 alter table allowed_users add column if not exists phone text;
 alter table allowed_users add column if not exists role text;
+alter table allowed_users add column if not exists created_by text;
 alter table allowed_users add column if not exists created_at timestamptz;
 
 -- Lock the table down: the app uses the service_role key (bypasses RLS),

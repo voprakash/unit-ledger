@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { getSessionPhone } from "@/app/lib/session"
+import { getSessionUser, isAdmin } from "@/app/lib/authz"
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -11,18 +11,21 @@ const getSupabase = () => {
   return createClient(url, key)
 }
 
-function requireAuth(req: NextRequest) {
-  const phone = getSessionPhone(req.headers)
-  if (!phone) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  return null
+async function requireUser(req: NextRequest) {
+  const user = await getSessionUser(req.headers)
+  if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) as NextResponse | null, user: null }
+  return { error: null, user }
 }
 
 export async function GET(req: NextRequest) {
-  const authErr = requireAuth(req)
-  if (authErr) return authErr
+  const { error, user } = await requireUser(req)
+  if (error || !user) return error
   try {
     const supabase = getSupabase()
-    const { data, error } = await supabase.from("transactions").select("*").order("created_at", { ascending: false }).limit(500)
+    let q = supabase.from("transactions").select("*").order("created_at", { ascending: false }).limit(500)
+    // Non-admins only see transactions they created
+    if (!isAdmin(user)) q = q.eq("created_by", user.phone)
+    const { data, error } = await q
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data || [])
   } catch (e: any) {
@@ -31,12 +34,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const authErr = requireAuth(req)
-  if (authErr) return authErr
+  const { error, user } = await requireUser(req)
+  if (error || !user) return error
   try {
     const body = await req.json()
     const supabase = getSupabase()
-    
+
     const { data, error } = await supabase.from("transactions").insert({
       tenant_id: body.tenant_id,
       tenant_name: body.tenant_name,
@@ -45,7 +48,7 @@ export async function POST(req: NextRequest) {
       method: body.method,
       notes: body.notes,
       date: body.date || new Date().toISOString(),
-      created_by: body.created_by
+      created_by: user.phone
     }).select().single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

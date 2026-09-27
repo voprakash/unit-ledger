@@ -103,6 +103,8 @@ export default function UsersPage() {
     u.role?.toLowerCase().includes(search.toLowerCase())
   )
 
+  const isAdminUI = session?.role === "admin"
+
   return (
     <div className="min-h-screen bg-[#f5f6f8]">
       {/* Top Menu */}
@@ -167,10 +169,12 @@ export default function UsersPage() {
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3 overscroll-contain">
               <input value={form.name} onChange={e => setForm({...form, name: e.target.value })} placeholder="Name" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
               <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value })} placeholder="Phone (10 digits)" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
-              <select value={form.role} onChange={e => setForm({...form, role: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
+              {isAdminUI && (
+                <select value={form.role} onChange={e => setForm({...form, role: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+              )}
               <p className="text-[12px] text-gray-400 px-1">They'll log in with WhatsApp OTP on this phone number and can use the bot.</p>
             </div>
 
@@ -197,10 +201,12 @@ export default function UsersPage() {
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3 overscroll-contain">
               <input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value })} placeholder="Name" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
               <input value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value })} placeholder="Phone (10 digits)" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
-              <select value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
+              {isAdminUI && (
+                <select value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value })} className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] bg-white outline-none">
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+              )}
             </div>
 
             <div className="shrink-0 bg-white px-5 py-4 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 flex gap-3">
