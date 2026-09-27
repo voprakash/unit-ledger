@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { createSessionToken, sessionCookieHeader } from "@/app/lib/session"
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -40,12 +41,21 @@ export async function POST(req: NextRequest) {
     await supabase.from("whatsapp_otps").delete().eq("id", row.id)
     const { data: user } = await supabase.from("allowed_users").select("*").ilike("phone", `%${norm.national}%`).limit(1).maybeSingle()
 
-    return NextResponse.json({ 
-      success:true, 
-      phone: norm.national, 
-      name: user?.name || "Manager", 
-      role: user?.role || "manager", 
-      country: norm.country 
+    let token: string
+    try {
+      token = createSessionToken(norm.national)
+    } catch {
+      return NextResponse.json({ error: "Server misconfigured: SESSION_SECRET is not set" }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success:true,
+      phone: norm.national,
+      name: user?.name || "Manager",
+      role: user?.role || "manager",
+      country: norm.country
+    }, {
+      headers: { "Set-Cookie": sessionCookieHeader(token) }
     })
   }catch(e:any){
     return NextResponse.json({ error: e.message }, { status:500 })

@@ -30,9 +30,15 @@ export default function ManagerPage() {
   }, [])
 
   const loadTenants = async () => {
-    const res = await fetch("/api/tenats")
+    const res = await fetch("/api/tenants")
     const data = await res.json()
     setTenants(Array.isArray(data)? data : [])
+  }
+
+  const handleLogout = async () => {
+    try { await fetch("/api/auth/logout", { method: "POST" }) } catch {}
+    localStorage.clear()
+    window.location.href = "/"
   }
 
   const handleAddTenant = async () => {
@@ -42,7 +48,7 @@ export default function ManagerPage() {
     }
     setLoading(true)
     try {
-      const res = await fetch("/api/tenats", {
+      const res = await fetch("/api/tenants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -78,7 +84,7 @@ export default function ManagerPage() {
           <h1 className="font-bold text-[18px]">🏠 Manager</h1>
           <div className="flex gap-2">
             <button onClick={() => setShowAddTenant(true)} className="px-4 py-2 bg-black text-white rounded-full text-[13px] font-bold">+ Add Tenant</button>
-            <button onClick={() => { localStorage.clear(); window.location.href = "/" }} className="px-3 py-2 bg-gray-100 rounded-full text-[13px]">Logout</button>
+            <button onClick={handleLogout} className="px-3 py-2 bg-gray-100 rounded-full text-[13px]">Logout</button>
           </div>
         </div>
       </div>

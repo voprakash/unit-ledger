@@ -1,10 +1,12 @@
-// @ts-nocheck
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.SUPABASE_URL!
-const supabaseKey = process.env.SUPABASE_PUBLISHABLE_KEY! || process.env.SUPABASE_ANON_KEY! || process.env.SUPABASE_SECRET_KEY! || process.env.SUPABASE_SERVICE_ROLE_KEY!
-const supabase = createClient(supabaseUrl, supabaseKey)
+function getSupabase() {
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseKey = process.env.SUPABASE_PUBLISHABLE_KEY! || process.env.SUPABASE_ANON_KEY! || process.env.SUPABASE_SECRET_KEY! || process.env.SUPABASE_SERVICE_ROLE_KEY! || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  if (!supabaseUrl) throw new Error("SUPABASE_URL is not configured")
+  return createClient(supabaseUrl, supabaseKey)
+}
 
 function parseDateFromParts(parts: string[]): string | null {
   for (let p of parts) {
@@ -31,6 +33,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let supabase: any
+  try {
+    supabase = getSupabase()
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 })
+  }
   const body = await req.json();
   const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
   if (!message) return NextResponse.json({ ok: true });
@@ -47,7 +56,14 @@ export async function POST(req: NextRequest) {
     // INCOME TYPES - these will ADD
     const incomeTypes = ["rent", "deposit", "sale", "payment", "advance"];
 
-    if (lower === "report" || lower === "report all" || lower === "all report") {
+    // Only allow team members in allowed_users to use the bot
+    const senderDigits = String(from || "").replace(/\D/g, "")
+    const senderNational = senderDigits.slice(-10)
+    const { data: sender } = await supabase.from("allowed_users")
+      .select("id").ilike("phone", `%${senderNational}%`).limit(1).maybeSingle()
+    if (!sender) {
+      reply = "⛔ This number is not authorized for Team Ledger."
+    } else if (lower === "report" || lower === "report all" || lower === "all report") {
       const { data } = await supabase.from("entries").select("*").order("entry_date", {ascending:true}).limit(200);
       if (!data?.length) reply = "No entries yet.";
       else {

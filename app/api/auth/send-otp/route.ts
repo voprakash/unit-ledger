@@ -59,7 +59,11 @@ export async function POST(req: NextRequest) {
       }).catch(()=>{})
     }
 
-    return NextResponse.json({ success:true, debug_otp: otp, sent_to: norm.waTo, country: norm.country, user: allowed })
+    // Only expose the OTP in the response when explicitly enabled for local/dev testing.
+    // Keep DEBUG_OTP unset (or "false") in production so the OTP is not leaked.
+    const debugFields = process.env.DEBUG_OTP === "true" ? { debug_otp: otp } : {}
+
+    return NextResponse.json({ success:true, ...debugFields, sent_to: norm.waTo, country: norm.country, user: allowed })
   }catch(e:any){
     return NextResponse.json({ error: e.message||"Server error" }, { status:500 })
   }

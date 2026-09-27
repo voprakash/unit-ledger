@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { getSessionPhone } from "@/app/lib/session"
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -10,10 +11,18 @@ const getSupabase = () => {
   return createClient(url, key)
 }
 
+function requireAuth(req: NextRequest) {
+  const phone = getSessionPhone(req.headers)
+  if (!phone) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  return null
+}
+
 export async function GET(req: NextRequest) {
+  const authErr = requireAuth(req)
+  if (authErr) return authErr
   try {
     const supabase = getSupabase()
-    const { data, error } = await supabase.from("transactions").select("*").order("created_at", { ascending: false }).limit(500)
+    const { data, error } = await supabase.from("tenants").select("*").order("created_at", { ascending: false }).limit(500)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data || [])
   } catch (e: any) {
@@ -22,19 +31,26 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const authErr = requireAuth(req)
+  if (authErr) return authErr
   try {
     const body = await req.json()
+    if (!body.name || !body.phone) {
+      return NextResponse.json({ error: "Name and phone are required" }, { status: 400 })
+    }
     const supabase = getSupabase()
-    
-    const { data, error } = await supabase.from("transactions").insert({
-      tenant_id: body.tenant_id,
-      tenant_name: body.tenant_name,
-      type: body.type,
-      amount: body.amount,
-      method: body.method,
-      notes: body.notes,
-      date: body.date || new Date().toISOString(),
-      created_by: body.created_by
+
+    const { data, error } = await supabase.from("tenants").insert({
+      name: body.name,
+      phone: body.phone,
+      property: body.property || null,
+      rent: body.rent ? Number(body.rent) : null,
+      deposit: body.deposit ? Number(body.deposit) : null,
+      start_date: body.start_date || null,
+      status: body.status || "active",
+      aadhaar: body.aadhaar || null,
+      notes: body.notes || null,
+      created_by: body.created_by || getSessionPhone(req.headers),
     }).select().single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

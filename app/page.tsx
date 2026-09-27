@@ -25,7 +25,7 @@ export default function Home() {
       })
       const data = await res.json()
       if(!res.ok) throw new Error(data.error || "Failed to send")
-      setMsg(`✅ OTP: ${data.debug_otp} | To: ${data.sent_to} | Name: ${data.user?.name}`)
+      setMsg(`✅ OTP sent!${data.debug_otp ? ` | OTP: ${data.debug_otp}` : ""} | To: ${data.sent_to} | Name: ${data.user?.name}`)
       setStep("otp")
     }catch(e:any){ 
       setMsg("❌ "+(e.message||"Network error")) 

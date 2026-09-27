@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { getSessionPhone } from "@/app/lib/session"
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -10,7 +11,15 @@ const getSupabase = () => {
   return createClient(url, key)
 }
 
+function requireAuth(req: NextRequest) {
+  const phone = getSessionPhone(req.headers)
+  if (!phone) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  return null
+}
+
 export async function GET(req: NextRequest) {
+  const authErr = requireAuth(req)
+  if (authErr) return authErr
   try {
     const supabase = getSupabase()
     const { data, error } = await supabase.from("transactions").select("*").order("created_at", { ascending: false }).limit(500)
@@ -22,6 +31,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const authErr = requireAuth(req)
+  if (authErr) return authErr
   try {
     const body = await req.json()
     const supabase = getSupabase()
