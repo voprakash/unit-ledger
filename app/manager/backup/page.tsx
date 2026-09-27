@@ -5,7 +5,7 @@ type Summary = Record<string, { inFile: number; alreadyHave: number; toAdd: numb
 
 export default function BackupPage() {
   const [admin, setAdmin] = useState<boolean | null>(null)
-  const [driveOn, setDriveOn] = useState<boolean | null>(null)
+  const [driveState, setDriveState] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState("")
   const [plan, setPlan] = useState<{ summary: Summary; exported_at: string } | null>(null)
@@ -20,8 +20,8 @@ export default function BackupPage() {
         if (ok) {
           fetch("/api/admin/backup/status")
             .then((r) => r.json())
-            .then((s) => setDriveOn(!!s.driveConfigured))
-            .catch(() => setDriveOn(false))
+            .then((s) => setDriveState(s.state || "missing_client"))
+            .catch(() => setDriveState("missing_client"))
         }
       })
       .catch(() => setAdmin(false))
@@ -106,10 +106,17 @@ export default function BackupPage() {
             <b>Team Ledger Backups</b>. The newest 8 copies are kept.
           </div>
           <div className="text-[13px]">
-            {driveOn === null ? "Checking…" : driveOn
+            {driveState === null ? "Checking…" : driveState === "ready"
               ? <span className="text-green-700 font-bold">● Google Drive connected — auto-backups active</span>
-              : <span className="text-amber-700 font-bold">● Google Drive not connected — auto-backups paused until setup is done</span>}
+              : driveState === "needs_connect"
+              ? <span className="text-amber-700 font-bold">● One step left — connect your Google account:</span>
+              : <span className="text-amber-700 font-bold">● Not set up yet — add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in Vercel env vars, redeploy, then come back here.</span>}
           </div>
+          {driveState === "needs_connect" && (
+            <button onClick={() => window.location.href = "/api/admin/drive/connect"} className="mt-3 w-full py-3 bg-black text-white rounded-xl font-bold text-[14px]">
+              🔗 Connect Google Drive
+            </button>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl p-4 shadow-sm">

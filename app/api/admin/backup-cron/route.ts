@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       skipped: true,
       reason:
-        "Google Drive backup is not configured. Add GOOGLE_SERVICE_ACCOUNT_JSON and GOOGLE_DRIVE_BACKUP_FOLDER_ID in Vercel env vars.",
+        "Google Drive backup is not configured. Add GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN and GOOGLE_DRIVE_BACKUP_FOLDER_ID in Vercel env vars, then connect via the Backup page.",
     })
   }
 
