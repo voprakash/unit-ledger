@@ -13,9 +13,6 @@ const getSupabase = () => {
     process.env.NEXT_PUBLIC_SUPABASE_KEY! ||
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE!
 
-  if (!url ||!key) {
-    console.error("Missing Supabase env vars");
-  }
   return createClient(url, key as string)
 }
 
@@ -81,6 +78,16 @@ export default function ManagerPage() {
     }
   }
 
+  const handleLogout = async () => {
+    try { await getSupabase().auth.signOut() } catch {}
+    localStorage.clear()
+    sessionStorage.clear()
+    document.cookie.split(";").forEach((c) => {
+      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+    });
+    window.location.replace("/")
+  }
+
   const filtered = tenants.filter(t =>
     t.full_name?.toLowerCase().includes(search.toLowerCase()) ||
     t.phone?.includes(search) ||
@@ -96,7 +103,7 @@ export default function ManagerPage() {
         </div>
         <div className="flex gap-2">
           <span className="px-3 py-2 rounded-xl bg-black text-white text-[13px] font-semibold">👥 Manager</span>
-          <button onClick={()=>{localStorage.clear(); window.location.href="/"}} className="px-4 py-2 rounded-xl bg-gray-100 text-[#374151] text-[13px] font-bold border">Logout</button>
+          <button onClick={handleLogout} className="px-4 py-2 rounded-xl bg-gray-100 text-[#374151] text-[13px] font-bold border">Logout</button>
         </div>
       </div>
 
