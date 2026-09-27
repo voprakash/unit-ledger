@@ -1,92 +1,127 @@
+// @ts-nocheck
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.SUPABASE_URL!
-const supabaseKey = process.env.SUPABASE_PUBLISHABLE_KEY! || process.env.SUPABASE_SECRET_KEY!
+const supabaseKey = process.env.SUPABASE_PUBLISHABLE_KEY! || process.env.SUPABASE_ANON_KEY! || process.env.SUPABASE_SECRET_KEY! || process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabase = createClient(supabaseUrl, supabaseKey)
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+function parseDateFromParts(parts: string[]): string | null {
+  for (let p of parts) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(p)) return p;
+    if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(p)) {
+      let [d,m,y] = p.split(/[\/\-]/);
+      if (y.length==2) y='20'+y;
+      return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+    }
+  }
+  return null;
+}
+function fmtDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  return `${String(d.getDate()).padStart(2,'0')} ${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getFullYear()).slice(-2)}`;
+}
 
-
-// VERIFY - for Meta
 export async function GET(req: NextRequest) {
   const mode = req.nextUrl.searchParams.get("hub.mode");
   const token = req.nextUrl.searchParams.get("hub.verify_token");
   const challenge = req.nextUrl.searchParams.get("hub.challenge");
-
-  if (mode === "subscribe" && token === process.env.VERIFY_TOKEN) {
-    return new NextResponse(challenge, { status: 200 });
-  }
+  if (mode === "subscribe" && token === process.env.VERIFY_TOKEN) return new NextResponse(challenge, { status: 200 });
   return new NextResponse("Forbidden", { status: 403 });
 }
 
-// RECEIVE MESSAGE
 export async function POST(req: NextRequest) {
   const body = await req.json();
-
   const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
   if (!message) return NextResponse.json({ ok: true });
-
-  const from = message.from; // user phone
+  const from = message.from;
   const text = message.text?.body || "";
-  const created_by = from;
-
-  console.log("Received:", text);
-
-  // --- Simple Parser for Unit Ledger ---
-  // Example: G201 John rent 2000 cash
-  // Example: F102 A Kumar electricity 500
+  const parts: string[] = text.trim().split(/\s+/);
   let reply = "";
+
   try {
-    const parts = text.trim().split(/\s+/);
-    const unit_code = parts[0]?.toUpperCase(); // G201
-    const customer_name = parts[1] || "";
-    const type = parts[2]?.toLowerCase() || "rent"; // rent/deposit
-    const amount = parseFloat(parts[3]) || 0;
-    const note = parts.slice(4).join(" ");
+    const lower = text.toLowerCase().trim();
 
-    if (unit_code && amount > 0) {
-      const { error } = await supabase.from("entries").insert({
-        unit_code,
-        customer_name,
-        type,
-        amount,
-        note,
-        created_by
-      });
-      if (error) throw error;
-      reply = `✅ Saved: ${unit_code} ${customer_name} ${type} ₹${amount} ${note}`;
+    // EXPENSE TYPES - these will SUBTRACT in total
+    const expenseTypes = ["expense", "other", "water", "electricity", "maintenance", "repair", "bill"];
+    // INCOME TYPES - these will ADD
+    const incomeTypes = ["rent", "deposit", "sale", "payment", "advance"];
+
+    if (lower === "report" || lower === "report all" || lower === "all report") {
+      const { data } = await supabase.from("entries").select("*").order("entry_date", {ascending:true}).limit(200);
+      if (!data?.length) reply = "No entries yet.";
+      else {
+        let total = 0;
+        let lines = data.map((e:any)=>{
+          let amt = Number(e.amount);
+          let isExpense = expenseTypes.includes(e.type?.toLowerCase());
+          if (isExpense) total -= amt; else total += amt;
+          return `${e.unit_code} | ${e.customer_name||'-'} | ${fmtDate(e.entry_date)} | ₹${e.amount} | ${e.type}${e.note?'- '+e.note:''} | #${e.id}`;
+        });
+        reply = `📊 ALL UNITS REPORT\nUnit | Name | Date(dd mm yy) | Amount | Type\n----------------------------------------\n` + lines.join("\n") + `\n----------------------------------------\nTOTAL NET: ₹${total}`;
+      }
     } else {
-      reply = `Send like: G201 John rent 2000 cash\nOr: G201 report`;
-    }
+      const unit_code = parts[0]?.toUpperCase();
 
-    // Handle report command
-    if (text.toLowerCase().includes("report")) {
-      const code = unit_code;
-      const { data } = await supabase.from("entries").select("*").eq("unit_code", code).order("created_at", {ascending:false}).limit(5);
-      if (data?.length) {
-        reply = `📊 ${code} Last 5:\n` + data.map((e:any)=>`${e.type} ₹${e.amount} - ${e.customer_name}`).join("\n");
+      if (parts[1]?.toLowerCase() === "delete") {
+        if (parts[2]?.toLowerCase() === "last") {
+          const { data } = await supabase.from("entries").select("id").eq("unit_code", unit_code).order("id", {ascending:false}).limit(1).single();
+          if (data) { await supabase.from("entries").delete().eq("id", (data as any).id); reply = `🗑️ Deleted last entry for ${unit_code}`; }
+        } else {
+          let id = parseInt(parts[2]); if (id) { await supabase.from("entries").delete().eq("id", id); reply = `🗑️ Deleted id ${id}`; }
+        }
+      } else if (parts[1]?.toLowerCase() === "report" || parts[0]?.toLowerCase() === "report") {
+        let u = unit_code; if (parts[0].toLowerCase() === "report") u = parts[1]?.toUpperCase();
+        const { data } = await supabase.from("entries").select("*").eq("unit_code", u).order("entry_date", {ascending:true}).limit(100);
+        if (data?.length) {
+          let total = 0;
+          let lines = data.map((e:any)=>{
+            let amt = Number(e.amount);
+            let isExpense = expenseTypes.includes(e.type?.toLowerCase());
+            if (isExpense) total -= amt; else total += amt;
+            return `${e.unit_code} | ${e.customer_name||'-'} | ${fmtDate(e.entry_date)} | ₹${e.amount} | ${e.type}${e.note?'- '+e.note:''} | #${e.id}`;
+          });
+          reply = `📊 REPORT: ${u}\nUnit | Name | Date(dd mm yy) | Amount | Type\n----------------------------------------\n` + lines.join("\n") + `\n----------------------------------------\nTOTAL: ₹${total}`;
+        } else reply = `No entries for ${u}`;
       } else {
-        reply = `No entries for ${code}`;
+        // ENTRY: G201 other 500 water bill OR G201 John rent 2000
+        const customer_name = parts[1] || "";
+        let entry_date = parseDateFromParts(parts) || new Date().toISOString().slice(0,10);
+
+        // Find type - check for 'other' first
+        let type = "rent";
+        let allTypes = [...incomeTypes,...expenseTypes];
+        for (let p of parts) {
+          let low = p.toLowerCase();
+          if (allTypes.includes(low)) { type = low; break; }
+        }
+        // If second word is 'other', treat as expense type = other
+        if (parts[1]?.toLowerCase() === "other") type = "other";
+
+        let amount = 0;
+        for (let p of parts) { let n = parseFloat(p); if (!isNaN(n) && n>10 &&!p.includes('/') &&!p.includes('-')) { if (p.length>=2) { amount=n; break; } } }
+        if (!amount) for (let p of parts) { let n = parseFloat(p); if (!isNaN(n) && n>0) amount=n; }
+
+        let amountIndex = parts.findIndex((p: string) => parseFloat(p) === amount);
+        let noteParts = amountIndex>=0? parts.slice(amountIndex+1) : [];
+
+        if (unit_code && amount > 0) {
+          const { data, error } = await supabase.from("entries").insert({ unit_code, customer_name: customer_name.toLowerCase()==="other"?"-":customer_name, type, amount, entry_date, note: noteParts.join(" "), created_by: from }).select().single();
+          if (error) throw error;
+          let sign = expenseTypes.includes(type)? "-" : "+";
+          reply = `✅ Saved #${(data as any).id}: ${unit_code} | ${fmtDate(entry_date)} | ${sign}₹${amount} | ${type} ${noteParts.join(" ")}`;
+        } else {
+          reply = `Use:\nG201 rent 2000 John\nG201 other 500 water bill\nG201 report`;
+        }
       }
     }
+  } catch (e:any) { reply = `❌ ${e.message}`; }
 
-  } catch (e:any) {
-    reply = `❌ Error: ${e.message}`;
-  }
-
-  // --- Send WhatsApp Reply ---
-  await fetch(`https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_ID}/messages`, {
+  await fetch(`https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_ID || process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
     method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: from,
-      text: { body: reply }
-    })
-  });
+    headers: { "Authorization": `Bearer ${process.env.WHATSAPP_TOKEN || process.env.WA_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to: from, text: { body: reply } })
+  }).catch(()=>{});
 
   return NextResponse.json({ ok: true });
 }
