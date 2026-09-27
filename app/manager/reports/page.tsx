@@ -7,14 +7,47 @@ type Txn = any
 const inr = (n: number) => "₹" + (Number(n) || 0).toLocaleString("en-IN")
 const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"
 
+// Local (non-UTC) YYYY-MM-DD
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+
+// Full calendar month `offset` months from the current one (0 = this month).
+// For the current month the range ends today; otherwise it ends on the month's last day.
+function monthRange(offset: number): [string, string] {
+  const now = new Date()
+  const first = new Date(now.getFullYear(), now.getMonth() + offset, 1)
+  const last = offset === 0 ? now : new Date(now.getFullYear(), now.getMonth() + offset + 1, 0)
+  return [isoDay(first), isoDay(last)]
+}
+
+const PRESETS: { label: string; get: () => [string, string] }[] = [
+  { label: "This Month", get: () => monthRange(0) },
+  { label: "Last Month", get: () => monthRange(-1) },
+  { label: "Last 3 Months", get: () => [monthRange(-2)[0], isoDay(new Date())] },
+]
+
 export default function ReportsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [txns, setTxns] = useState<Txn[]>([])
   const [loading, setLoading] = useState(true)
   const [tenantFilter, setTenantFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
-  const [fromDate, setFromDate] = useState("")
-  const [toDate, setToDate] = useState("")
+  const [fromDate, setFromDate] = useState(() => monthRange(0)[0])
+  const [toDate, setToDate] = useState(() => isoDay(new Date()))
+
+  const resetDates = () => {
+    const [f, t] = monthRange(0)
+    setFromDate(f)
+    setToDate(t)
+  }
+
+  // Highlight the preset pill when the chosen dates exactly match it
+  const activePreset = useMemo(() => {
+    for (const p of PRESETS) {
+      const [f, t] = p.get()
+      if (f === fromDate && t === toDate) return p.label
+    }
+    return null
+  }, [fromDate, toDate])
 
   useEffect(() => {
     const s = localStorage.getItem("team_session")
@@ -109,18 +142,32 @@ export default function ReportsPage() {
               <option value="other">Other</option>
             </select>
           </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <p className="text-[11px] font-bold tracking-widest text-gray-500 mb-1 ml-1">FROM</p>
-              <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="w-full px-4 py-3 rounded-2xl border border-gray-200 bg-white text-[15px] outline-none" />
+          <div>
+            <p className="text-[11px] font-bold tracking-widest text-gray-500 mb-1 ml-1">PERIOD</p>
+            <div className="flex gap-2 mb-3">
+              {PRESETS.map(p => (
+                <button
+                  key={p.label}
+                  onClick={() => { const [f, t] = p.get(); setFromDate(f); setToDate(t) }}
+                  className={`px-4 py-2 rounded-full text-[13px] font-bold ${activePreset === p.label ? "bg-black text-white" : "bg-gray-100 text-gray-700"}`}
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
-            <div className="flex-1">
-              <p className="text-[11px] font-bold tracking-widest text-gray-500 mb-1 ml-1">TO</p>
-              <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="w-full px-4 py-3 rounded-2xl border border-gray-200 bg-white text-[15px] outline-none" />
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <p className="text-[11px] font-bold tracking-widest text-gray-500 mb-1 ml-1">FROM</p>
+                <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="w-full px-4 py-3 rounded-2xl border border-gray-200 bg-white text-[15px] outline-none" />
+              </div>
+              <div className="flex-1">
+                <p className="text-[11px] font-bold tracking-widest text-gray-500 mb-1 ml-1">TO</p>
+                <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="w-full px-4 py-3 rounded-2xl border border-gray-200 bg-white text-[15px] outline-none" />
+              </div>
             </div>
           </div>
-          {(tenantFilter !== "all" || typeFilter !== "all" || fromDate || toDate) && (
-            <button onClick={() => { setTenantFilter("all"); setTypeFilter("all"); setFromDate(""); setToDate("") }} className="text-[13px] text-gray-500 underline">Clear filters</button>
+          {(tenantFilter !== "all" || typeFilter !== "all" || activePreset !== "This Month") && (
+            <button onClick={() => { setTenantFilter("all"); setTypeFilter("all"); resetDates() }} className="text-[13px] text-gray-500 underline">Clear filters</button>
           )}
         </div>
 
