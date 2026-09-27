@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { getSessionUser, isAdmin } from "@/app/lib/authz"
+import { getSessionUser, isAdmin, type SessionUser } from "@/app/lib/authz"
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -11,15 +11,16 @@ const getSupabase = () => {
   return createClient(url, key)
 }
 
-async function requireUser(req: NextRequest) {
+async function requireUser(req: NextRequest): Promise<SessionUser | NextResponse> {
   const user = await getSessionUser(req.headers)
-  if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) as NextResponse | null, user: null }
-  return { error: null, user }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  return user
 }
 
 export async function GET(req: NextRequest) {
-  const { error, user } = await requireUser(req)
-  if (error || !user) return error
+  const auth = await requireUser(req)
+  if (auth instanceof NextResponse) return auth
+  const user = auth
   try {
     const supabase = getSupabase()
     let q = supabase.from("transactions").select("*").order("created_at", { ascending: false }).limit(500)
@@ -34,8 +35,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { error, user } = await requireUser(req)
-  if (error || !user) return error
+  const auth = await requireUser(req)
+  if (auth instanceof NextResponse) return auth
+  const user = auth
   try {
     const body = await req.json()
     const supabase = getSupabase()

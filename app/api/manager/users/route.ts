@@ -11,15 +11,16 @@ const getSupabase = () => {
   return createClient(url, key)
 }
 
-async function requireUser(req: Request): Promise<{ error: NextResponse | null; user: SessionUser | null }> {
+async function requireUser(req: Request): Promise<SessionUser | NextResponse> {
   const user = await getSessionUser(req.headers)
-  if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }), user: null }
-  return { error: null, user }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  return user
 }
 
 export async function GET(req: Request) {
-  const { error, user } = await requireUser(req)
-  if (error || !user) return error
+  const auth = await requireUser(req)
+  if (auth instanceof NextResponse) return auth
+  const user = auth
   try {
     const supabase = getSupabase()
     let q = supabase.from("allowed_users").select("*").order("created_at", { ascending: false })
@@ -34,8 +35,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { error, user } = await requireUser(req)
-  if (error || !user) return error
+  const auth = await requireUser(req)
+  if (auth instanceof NextResponse) return auth
+  const user = auth
   try {
     const body = await req.json()
     const name = String(body.name || "").trim()
@@ -60,8 +62,9 @@ export async function POST(req: Request) {
 }
 
 export async function PUT(req: Request) {
-  const { error, user } = await requireUser(req)
-  if (error || !user) return error
+  const auth = await requireUser(req)
+  if (auth instanceof NextResponse) return auth
+  const user = auth
   try {
     const body = await req.json()
     const id = body.id
@@ -87,8 +90,9 @@ export async function PUT(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const { error, user } = await requireUser(req)
-  if (error || !user) return error
+  const auth = await requireUser(req)
+  if (auth instanceof NextResponse) return auth
+  const user = auth
   try {
     const { searchParams } = new URL(req.url)
     const id = searchParams.get("id")
