@@ -15,10 +15,11 @@ export default function ManagerPage() {
     property: "",
     rent: "",
     deposit: "",
-    aadhhaar: "",
     aadhaar: "",
     start_date: "",
     notes: "",
+    office_name: "",
+    office_address: "",
     status: "active"
   })
 
@@ -61,13 +62,15 @@ export default function ManagerPage() {
           created_by: session?.phone,
           status: form.status,
           aadhaar: form.aadhaar,
-          notes: form.notes
+          notes: form.notes,
+          office_name: form.office_name,
+          office_address: form.office_address
         })
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       setShowAddTenant(false)
-      setForm({ name: "", phone: "", property: "", rent: "", deposit: "", aadhhaar: "", aadhaar: "", start_date: "", notes: "", status: "active" })
+      setForm({ name: "", phone: "", property: "", rent: "", deposit: "", aadhaar: "", start_date: "", notes: "", office_name: "", office_address: "", status: "active" })
       loadTenants()
     } catch (e: any) {
       alert(e.message)
@@ -101,6 +104,7 @@ export default function ManagerPage() {
               <div>
                 <p className="font-bold">{t.full_name}</p>
                 <p className="text-[13px] text-gray-500">{t.room_number} • ₹{t.rent_amount} • {t.status}</p>
+                {t.office_name && <p className="text-[12px] text-gray-400 mt-0.5">🏢 {t.office_name}{t.office_address ? ` • ${t.office_address}` : ""}</p>}
               </div>
               <p className="text-[13px]">{t.phone}</p>
             </div>
@@ -138,6 +142,14 @@ export default function ManagerPage() {
                     <option value="notice">Notice</option>
                     <option value="vacated">Vacated</option>
                   </select>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold tracking-widest text-gray-500 mb-2 ml-1">OFFICE</p>
+                <div className="space-y-3">
+                  <input value={form.office_name} onChange={e => setForm({...form, office_name: e.target.value })} placeholder="Office name" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
+                  <input value={form.office_address} onChange={e => setForm({...form, office_address: e.target.value })} placeholder="Office address" className="w-full px-5 py-4 rounded-2xl border border-black text-[16px] outline-none" />
                 </div>
               </div>
 

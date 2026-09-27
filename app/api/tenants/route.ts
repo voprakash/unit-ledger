@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
       status: body.status || "active",
       id_number: body.aadhaar || null,
       address: body.notes || null,
+      office_name: body.office_name || null,
+      office_address: body.office_address || null,
       created_by: body.created_by || getSessionPhone(req.headers),
     }).select().single()
 
