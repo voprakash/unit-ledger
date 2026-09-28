@@ -72,6 +72,60 @@ export async function uploadBackupToDrive(fileName: string, json: string) {
   return res.data as { id: string; name: string; webViewLink?: string; createdTime?: string }
 }
 
+/** Find a subfolder by name under a parent folder, creating it if missing. Returns the folder id. */
+export async function findOrCreateDriveFolder(name: string, parentId: string): Promise<string> {
+  const drive = getDrive()
+  if (!drive) throw new Error("Google Drive is not configured")
+  const safe = name.replace(/'/g, "\\'")
+  const res: any = await drive.files.list({
+    q: `mimeType = 'application/vnd.google-apps.folder' and name = '${safe}' and '${parentId}' in parents and trashed = false`,
+    pageSize: 10,
+    fields: "files(id,name)",
+  })
+  const existing = (res.data.files || [])[0]
+  if (existing) return existing.id as string
+  const created: any = await drive.files.create({
+    requestBody: { name, parents: [parentId], mimeType: "application/vnd.google-apps.folder" },
+    fields: "id,name",
+  })
+  return created.data.id as string
+}
+
+/** Upload a JSON file into a specific Drive folder. Returns the file's id/name/link. */
+export async function uploadJsonToDriveFolder(fileName: string, json: string, folderId: string) {
+  const drive = getDrive()
+  if (!drive) throw new Error("Google Drive is not configured")
+  const res: any = await drive.files.create({
+    requestBody: { name: fileName, parents: [folderId], mimeType: "application/json" },
+    media: { mimeType: "application/json", body: json },
+    fields: "id,name,webViewLink,createdTime",
+  })
+  return res.data as { id: string; name: string; webViewLink?: string; createdTime?: string }
+}
+
+/** Keep the newest `keep` files matching a name prefix in a folder, delete the rest. */
+export async function pruneDriveFolder(folderId: string, nameContains: string, keep = 12) {
+  const drive = getDrive()
+  if (!drive) throw new Error("Google Drive is not configured")
+  const safe = nameContains.replace(/'/g, "\\'")
+  const res: any = await drive.files.list({
+    q: `'${folderId}' in parents and trashed = false and name contains '${safe}'`,
+    orderBy: "createdTime desc",
+    pageSize: 100,
+    fields: "files(id,name,createdTime)",
+  })
+  const files: any[] = res.data.files || []
+  const toDelete = files.slice(keep)
+  for (const f of toDelete) {
+    try {
+      await drive.files.delete({ fileId: f.id })
+    } catch {
+      /* keep going */
+    }
+  }
+  return { total: files.length, deleted: toDelete.length, kept: files.length - toDelete.length }
+}
+
 /** Keep the newest `keep` backups in the Drive folder, delete the rest. */
 export async function pruneDriveBackups(keep = 8) {
   const drive = getDrive()
