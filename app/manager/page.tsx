@@ -18,6 +18,8 @@ export default function ManagerPage() {
   const [showTrash, setShowTrash] = useState(false)
   const [trashTxns, setTrashTxns] = useState<any[]>([])
   const [meAdmin, setMeAdmin] = useState(false)
+  const [managers, setManagers] = useState<any[]>([])
+  const [selectedManager, setSelectedManager] = useState("all")
   const [editForm, setEditForm] = useState({
     name: "", phone: "", property: "", rent: "", deposit: "",
     aadhaar: "", start_date: "", notes: "",
@@ -52,7 +54,13 @@ export default function ManagerPage() {
     loadTenants()
     loadTxns()
     fetch("/api/auth/me").then(r => r.json()).then(me => {
-      if (me && String(me.role || "").toLowerCase() === "admin") setMeAdmin(true)
+      if (me && String(me.role || "").toLowerCase() === "admin") {
+        setMeAdmin(true)
+        // Admins get the manager picker: load all users for name lookup
+        fetch("/api/manager/users").then(r => r.json()).then(u => {
+          setManagers(Array.isArray(u) ? u : [])
+        }).catch(() => {})
+      }
     }).catch(() => {})
   }, [])
 
@@ -89,11 +97,29 @@ export default function ManagerPage() {
     setTenants(Array.isArray(data)? data : [])
   }
 
-  const filteredTenants = tenants.filter(t =>
-    t.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    t.phone?.includes(search) ||
-    t.room_number?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredTenants = tenants
+    .filter(t => selectedManager === "all" || String(t.created_by) === selectedManager)
+    .filter(t =>
+      t.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+      t.phone?.includes(search) ||
+      t.room_number?.toLowerCase().includes(search.toLowerCase())
+    )
+
+  // Admin-only: which manager added each tenant (tenants are created with created_by = adder's phone)
+  const managerName = (phone: any) => {
+    const m = managers.find((u: any) => String(u.phone) === String(phone))
+    return m?.name || String(phone || "—")
+  }
+  const managerOptions = (() => {
+    const counts: Record<string, number> = {}
+    tenants.forEach(t => {
+      const k = String(t.created_by || "unknown")
+      counts[k] = (counts[k] || 0) + 1
+    })
+    return Object.entries(counts)
+      .map(([phone, count]) => ({ phone, count, name: managerName(phone) }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  })()
 
   const handleAddTransaction = async () => {
     if (!transForm.amount) {
@@ -324,8 +350,26 @@ export default function ManagerPage() {
       <div className="max-w-md mx-auto p-4">
         <div className="bg-white rounded-[20px] p-4 border mb-4">
           <p className="text-[13px] text-gray-500">Welcome, {session?.name} ({session?.phone})</p>
-          <p className="text-[20px] font-bold">{tenants.length} Tenants</p>
+          <p className="text-[20px] font-bold">
+            {filteredTenants.length} Tenants
+            {meAdmin && selectedManager !== "all" && (
+              <span className="text-[14px] font-semibold text-gray-500"> • {managerName(selectedManager)}</span>
+            )}
+          </p>
         </div>
+
+        {meAdmin && (
+          <select
+            value={selectedManager}
+            onChange={e => setSelectedManager(e.target.value)}
+            className="w-full px-5 py-3 rounded-2xl border border-gray-200 bg-white text-[15px] mb-3 outline-none font-bold cursor-pointer"
+          >
+            <option value="all">All Managers ({tenants.length})</option>
+            {managerOptions.map(o => (
+              <option key={o.phone} value={o.phone}>{o.name} ({o.count})</option>
+            ))}
+          </select>
+        )}
 
         <input
           value={search}
@@ -342,6 +386,7 @@ export default function ManagerPage() {
                   <p className="font-bold">{t.full_name} <span className={`ml-1 text-[11px] px-2 py-0.5 rounded-full ${t.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>{t.status}</span></p>
                   <p className="text-[13px] text-gray-500">{t.room_number ? `Room ${t.room_number}` : ""} • ₹{t.rent_amount} / month</p>
                   <p className="text-[13px] text-gray-500">{t.phone}</p>
+                  {meAdmin && <p className="text-[12px] text-gray-400 mt-0.5">👤 {managerName(t.created_by)}</p>}
                   {t.office_name && <p className="text-[12px] text-gray-400 mt-0.5">🏢 {t.office_name}{t.office_address ? ` • ${t.office_address}` : ""}</p>}
                 </div>
                 <div className="flex flex-col gap-1.5 shrink-0 ml-2">
