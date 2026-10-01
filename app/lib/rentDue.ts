@@ -4,7 +4,7 @@
 // phone, start_date, created_at, created_by, status; transactions: tenant_id,
 // tenant_name, type, amount, date, created_at, deleted_at).
 
-import { sendWhatsAppText, toWhatsAppNumber } from "./whatsapp"
+import { sendWhatsAppText, sendWhatsAppTemplate, toWhatsAppNumber } from "./whatsapp"
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -314,5 +314,114 @@ export async function runRentReminders(
     summary,
     results,
     adminSummary: formatAdminSummary(summary.label, results),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tenant reminders (sent on the 5th of each month + manual button).
+// Free-form text only works inside the 24-hour customer-service window, so
+// tenants get an approved UTILITY template instead. Create it in Meta
+// WhatsApp Manager with this exact body:
+//   "Hello {{1}}, this is a reminder that your rent of ₹{{2}} for {{3}} is
+//    still pending. Please pay at the earliest. Thank you!"
+// and update the name below if you choose a different template name.
+// ---------------------------------------------------------------------------
+
+export const TENANT_REMINDER_TEMPLATE = "rent_due_reminder"
+export const TENANT_REMINDER_LANGUAGE = "en"
+
+export function renderTenantReminder(name: string, amount: string, label: string): string {
+  return `Hello ${name}, this is a reminder that your rent of ₹${amount} for ${label} is still pending. Please pay at the earliest. Thank you!`
+}
+
+export type TenantReminderResult = {
+  tenantId: string
+  tenantName: string
+  room: string
+  tenantPhone: string // as stored on the tenant record
+  balance: number
+  status: "due" | "partial"
+  sent: boolean
+  skipped?: boolean
+  skipReason?: string
+  error?: string
+  preview?: string // present only in dry runs
+}
+
+export function formatTenantAdminSummary(label: string, results: TenantReminderResult[]): string {
+  const sent = results.filter((r) => r.sent)
+  const failed = results.filter((r) => !r.sent && !r.skipped)
+  const skipped = results.filter((r) => r.skipped)
+  const outstanding = sent.reduce((s, r) => s + r.balance, 0)
+  const lines = [
+    `📲 *Tenant rent reminders — ${label}*`,
+    ``,
+    `Sent to ${sent.length} tenant${sent.length === 1 ? "" : "s"} · ${inr(outstanding)} outstanding.`,
+  ]
+  for (const f of failed) lines.push(`⚠️ ${f.tenantName}: ${f.error || "failed"}`)
+  for (const s of skipped) lines.push(`⏭️ ${s.tenantName}: ${s.skipReason || "skipped"}`)
+  if (failed.length === 0 && skipped.length === 0) lines.push(`All delivered.`)
+  return lines.join("\n")
+}
+
+/**
+ * Compute dues for a month and WhatsApp each unpaid (non-grace) tenant their
+ * personal reminder via the approved utility template. In dry-run mode nothing
+ * is sent — the would-be messages come back as `preview` for inspection.
+ */
+export async function runTenantReminders(
+  db: Db,
+  opts: { year: number; month: number; scopePhone?: string; dryRun?: boolean; asOf?: Date }
+): Promise<{
+  label: string
+  summary: RentDueSummary
+  results: TenantReminderResult[]
+  adminSummary: string
+}> {
+  const summary = await computeRentDue(db, opts.year, opts.month, {
+    scopePhone: opts.scopePhone,
+    asOf: opts.asOf,
+  })
+  const actionable = summary.rows.filter(
+    (r) => r.status !== "paid" && r.balance > 0 && !r.grace
+  )
+
+  const results: TenantReminderResult[] = []
+  for (const r of actionable) {
+    const amount = Math.round(r.balance).toLocaleString("en-IN")
+    const params = [r.name, amount, summary.label]
+    const preview = renderTenantReminder(r.name, amount, summary.label)
+    const base = {
+      tenantId: r.tenantId,
+      tenantName: r.name,
+      room: r.room,
+      tenantPhone: r.tenantPhone,
+      balance: r.balance,
+      status: r.status as "due" | "partial",
+      preview,
+    }
+    const to = toWhatsAppNumber(r.tenantPhone)
+    if (!to) {
+      results.push({
+        ...base,
+        sent: false,
+        skipped: true,
+        skipReason: "no valid phone number on file",
+      })
+      continue
+    }
+    if (opts.dryRun) {
+      results.push({ ...base, sent: false, skipped: true, skipReason: "dry run — nothing sent" })
+      continue
+    }
+    const s = await sendWhatsAppTemplate(to, TENANT_REMINDER_TEMPLATE, TENANT_REMINDER_LANGUAGE, params)
+    results.push({ ...base, sent: s.sent, error: s.error })
+  }
+
+  return {
+    label: summary.label,
+    summary,
+    results,
+    adminSummary: formatTenantAdminSummary(summary.label, results),
   }
 }

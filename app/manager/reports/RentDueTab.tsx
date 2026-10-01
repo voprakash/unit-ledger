@@ -51,6 +51,8 @@ export default function RentDueTab() {
   const [working, setWorking] = useState(false)
   const [preview, setPreview] = useState<any | null>(null)
   const [results, setResults] = useState<any | null>(null)
+  const [previewT, setPreviewT] = useState<any | null>(null)
+  const [resultsT, setResultsT] = useState<any | null>(null)
   const [error, setError] = useState("")
 
   const load = useCallback(async (ym: string) => {
@@ -58,6 +60,8 @@ export default function RentDueTab() {
     setError("")
     setPreview(null)
     setResults(null)
+    setPreviewT(null)
+    setResultsT(null)
     try {
       const res = await fetch(`/api/reports/rent-due?month=${ym}`, { signal: AbortSignal.timeout(30000) })
       const j = await res.json().catch(() => ({}))
@@ -106,6 +110,47 @@ export default function RentDueTab() {
       if (!res.ok) throw new Error(j.error || `Server error (${res.status})`)
       setResults(j)
       setPreview(null)
+    } catch (e: any) {
+      setError(e?.message || "Send failed")
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const startTenantSend = async () => {
+    setWorking(true)
+    setError("")
+    try {
+      const res = await fetch("/api/admin/send-tenant-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month, dry_run: true }),
+        signal: AbortSignal.timeout(60000),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || `Server error (${res.status})`)
+      setPreviewT(j)
+    } catch (e: any) {
+      setError(e?.message || "Preview failed")
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const confirmTenantSend = async () => {
+    setWorking(true)
+    setError("")
+    try {
+      const res = await fetch("/api/admin/send-tenant-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month }),
+        signal: AbortSignal.timeout(90000),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || `Server error (${res.status})`)
+      setResultsT(j)
+      setPreviewT(null)
     } catch (e: any) {
       setError(e?.message || "Send failed")
     } finally {
@@ -228,9 +273,18 @@ export default function RentDueTab() {
               <button
                 onClick={startSend}
                 disabled={working || unpaid.filter((r) => !r.grace).length === 0}
-                className="w-full py-4 rounded-2xl bg-green-600 text-white font-bold text-[16px] mb-8 disabled:opacity-50"
+                className="w-full py-4 rounded-2xl bg-green-600 text-white font-bold text-[16px] mb-3 disabled:opacity-50"
               >
-                {working ? "Checking..." : "📲 Send WhatsApp reminders"}
+                {working ? "Checking..." : "📲 Send manager reminders"}
+              </button>
+            )}
+            {!previewT && !resultsT && (
+              <button
+                onClick={startTenantSend}
+                disabled={working || unpaid.filter((r) => !r.grace).length === 0}
+                className="w-full py-4 rounded-2xl bg-blue-600 text-white font-bold text-[16px] mb-8 disabled:opacity-50"
+              >
+                {working ? "Checking..." : "📲 Send tenant reminders"}
               </button>
             )}
 
@@ -277,6 +331,58 @@ export default function RentDueTab() {
                   ))}
                 </div>
                 <button onClick={() => setResults(null)} className="w-full py-3 rounded-2xl bg-gray-100 font-bold text-[15px]">Done</button>
+              </div>
+            )}
+
+            {previewT && (
+              <div className="bg-white rounded-[20px] p-5 border mb-8">
+                <p className="font-bold text-[16px] mb-1">Confirm tenant reminders — {previewT.label}</p>
+                <p className="text-[14px] text-gray-600 mb-3">
+                  This will WhatsApp <b>{previewT.results.filter((r: any) => !r.skipped).length} tenant(s)</b> via
+                  the approved template message.
+                  {previewT.results.some((r: any) => r.skipped) && " Some will be skipped (see below)."}
+                </p>
+                <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+                  {previewT.results.map((r: any, i: number) => (
+                    <div key={i} className="bg-[#f5f6f8] rounded-2xl p-3 text-[13px]">
+                      <p className="font-bold">
+                        {r.tenantName}{r.room ? <span className="font-normal text-gray-500"> • {r.room}</span> : ""}{" "}
+                        <span className="font-normal text-gray-500">• {inr(r.balance)} • 📞 {r.tenantPhone || "no phone"}</span>
+                      </p>
+                      {r.preview && <p className="text-gray-600 mt-1 text-[12px]">“{r.preview}”</p>}
+                      {r.skipped && <p className="text-amber-700 mt-1">⏭️ {r.skipReason}</p>}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[12px] text-gray-500 mb-3">
+                  Tenants receive an approved template message (works even if they haven't messaged recently).
+                </p>
+                <div className="flex gap-2">
+                  <button onClick={() => setPreviewT(null)} disabled={working} className="flex-1 py-3 rounded-2xl bg-gray-100 font-bold text-[15px]">Cancel</button>
+                  <button onClick={confirmTenantSend} disabled={working} className="flex-1 py-3 rounded-2xl bg-blue-600 text-white font-bold text-[15px] disabled:opacity-50">
+                    {working ? "Sending..." : "Confirm & send"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {resultsT && (
+              <div className="bg-white rounded-[20px] p-5 border mb-8">
+                <p className="font-bold text-[16px] mb-3">Tenant reminders — {resultsT.label}</p>
+                <div className="space-y-2 mb-4">
+                  {resultsT.results.map((r: any, i: number) => (
+                    <div key={i} className="bg-[#f5f6f8] rounded-2xl p-3 text-[13px] flex justify-between items-center">
+                      <div>
+                        <p className="font-bold">{r.tenantName}{r.room ? <span className="font-normal text-gray-500"> • {r.room}</span> : ""}</p>
+                        <p className="text-gray-500">{inr(r.balance)} • 📞 {r.tenantPhone || "no phone"}</p>
+                        {r.error && <p className="text-red-600">⚠️ {r.error}</p>}
+                        {r.skipped && <p className="text-amber-700">⏭️ {r.skipReason}</p>}
+                      </div>
+                      <span className="text-[18px]">{r.sent ? "✅" : r.skipped ? "⏭️" : "❌"}</span>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => setResultsT(null)} className="w-full py-3 rounded-2xl bg-gray-100 font-bold text-[15px]">Done</button>
               </div>
             )}
           </div>
